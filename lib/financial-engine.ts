@@ -1,6 +1,6 @@
 import { loadMonthlyReview, getAllMonthlyReviews } from "./storage";
 import { parseAmount } from "./spending-analytics";
-import type { MonthlyReviewFormData } from "./monthly-review";
+import type { MonthlyFinancialStatement } from "./monthly-review";
 
 export type FinancialMetrics = {
   netWorth: number;
@@ -11,6 +11,9 @@ export type FinancialMetrics = {
   loanProgress: number;
   fire54Score: number;
   retirementScore: number;
+  expenseRatio?: number; // New: For MonthlyFinancialStatement
+  debtRatio?: number; // New: For MonthlyFinancialStatement
+  financialIndependenceProgress?: number; // New: For MonthlyFinancialStatement
 };
 
 export type PortfolioAllocation = {
@@ -29,6 +32,68 @@ export type GoalProgress = {
   color: string;
 };
 
+export type AICFOInsights = {
+  overallHealth: "Excellent" | "Good" | "Fair" | "Poor";
+  biggestStrength: string;
+  biggestRisk: string;
+  recommendation: string;
+};
+
+/**
+ * Get AI CFO insights from MonthlyFinancialStatement
+ */
+export function getAICFOInsights(statement: MonthlyFinancialStatement): AICFOInsights {
+  const savingsRate = calculateSavingsRateFromStatement(statement);
+  const investmentRate = calculateInvestmentRateFromStatement(statement);
+  const emergencyFundProgress = calculateEmergencyFundProgressFromStatement(statement);
+  const debtRatio = calculateDebtRatio(statement);
+  const financialHealthScore = calculateFinancialHealthScore(statement);
+
+  // Determine overall health
+  let overallHealth: AICFOInsights["overallHealth"];
+  if (financialHealthScore >= 80) overallHealth = "Excellent";
+  else if (financialHealthScore >= 60) overallHealth = "Good";
+  else if (financialHealthScore >= 40) overallHealth = "Fair";
+  else overallHealth = "Poor";
+
+  // Determine biggest strength
+  let biggestStrength = "";
+  if (savingsRate >= 40) biggestStrength = "Excellent Savings Discipline";
+  else if (investmentRate >= 30) biggestStrength = "Strong Investment Portfolio";
+  else if (emergencyFundProgress >= 80) biggestStrength = "Well-Funded Emergency Reserve";
+  else if (debtRatio < 20) biggestStrength = "Low Debt Burden";
+  else biggestStrength = "Consistent Financial Tracking";
+
+  // Determine biggest risk
+  let biggestRisk = "";
+  if (debtRatio > 50) biggestRisk = "High Debt-to-Asset Ratio";
+  else if (emergencyFundProgress < 30) biggestRisk = "Insufficient Emergency Fund";
+  else if (savingsRate < 10) biggestRisk = "Low Savings Rate";
+  else if (investmentRate < 15) biggestRisk = "Underinvestment in Growth Assets";
+  else biggestRisk = "Expense Inflation";
+
+  // Generate recommendation
+  let recommendation = "";
+  const homeLoanOutstanding = safeParseAmount(statement.liabilities.homeLoanOutstanding);
+  
+  if (homeLoanOutstanding > 0) {
+    recommendation = `Continue home loan prepayment. Current outstanding: ${formatINR(homeLoanOutstanding)}. After loan closure, redirect entire amount into equity mutual funds for long-term growth.`;
+  } else if (emergencyFundProgress < 100) {
+    recommendation = `Build emergency fund to ₹6L target. Current progress: ${emergencyFundProgress}%. This provides 6 months of expenses as safety net.`;
+  } else if (investmentRate < 30) {
+    recommendation = `Increase investment rate to 30% for optimal wealth creation. Current rate: ${investmentRate}%. Focus on equity mutual funds for long-term growth.`;
+  } else {
+    recommendation = `Maintain current financial discipline. Consider diversifying into international funds and rebalancing portfolio annually.`;
+  }
+
+  return {
+    overallHealth,
+    biggestStrength,
+    biggestRisk,
+    recommendation,
+  };
+}
+
 /**
  * Parse currency string to number with fallback to 0
  */
@@ -38,213 +103,139 @@ function safeParseAmount(value: string): number {
 }
 
 /**
- * Calculate Net Worth
- * Net Worth = (Mutual Funds + PPF + NPS + Emergency Fund + Bank Balance + Property) - (Home Loan Outstanding)
+ * Get portfolio allocation breakdown from MonthlyFinancialStatement
  */
-export function calculateNetWorth(review: MonthlyReviewFormData): number {
-  const assets =
-    safeParseAmount(review.mutualFundValue) +
-    safeParseAmount(review.ppfValue) +
-    safeParseAmount(review.npsValue) +
-    safeParseAmount(review.emergencyFund) +
-    safeParseAmount(review.bankBalance) +
-    5000000; // Property value (₹50L hardcoded as per dashboard)
-
-  const liabilities = safeParseAmount(review.homeLoanOutstanding);
-
-  return assets - liabilities;
-}
-
-/**
- * Calculate Financial Assets
- * Financial Assets = Mutual Funds + PPF + NPS + Emergency Fund + Bank Balance
- */
-export function calculateFinancialAssets(review: MonthlyReviewFormData): number {
-  return (
-    safeParseAmount(review.mutualFundValue) +
-    safeParseAmount(review.ppfValue) +
-    safeParseAmount(review.npsValue) +
-    safeParseAmount(review.emergencyFund) +
-    safeParseAmount(review.bankBalance)
-  );
-}
-
-/**
- * Calculate Savings Rate
- * Savings Rate = ((Total Income - Total Expenses) / Total Income) * 100
- */
-export function calculateSavingsRate(review: MonthlyReviewFormData): number {
-  const totalIncome = safeParseAmount(review.netSalary) + safeParseAmount(review.otherIncome);
-  const totalExpenses =
-    safeParseAmount(review.livingExpenses) +
-    safeParseAmount(review.travel) +
-    safeParseAmount(review.medical) +
-    safeParseAmount(review.otherExpenses);
-
-  if (totalIncome <= 0) return 0;
-
-  const savings = totalIncome - totalExpenses;
-  return Math.round((savings / totalIncome) * 1000) / 10;
-}
-
-/**
- * Calculate Investment Rate
- * Investment Rate = (Total Investments / Total Income) * 100
- */
-export function calculateInvestmentRate(review: MonthlyReviewFormData): number {
-  const totalIncome = safeParseAmount(review.netSalary) + safeParseAmount(review.otherIncome);
-  const totalInvestments =
-    safeParseAmount(review.ppf) +
-    safeParseAmount(review.mutualFundSip) +
-    safeParseAmount(review.additionalMutualFund) +
-    safeParseAmount(review.nps);
-
-  if (totalIncome <= 0) return 0;
-
-  return Math.round((totalInvestments / totalIncome) * 1000) / 10;
-}
-
-/**
- * Calculate Emergency Fund Progress
- * Assumes target is ₹6L (₹600,000)
- */
-export function calculateEmergencyFundProgress(review: MonthlyReviewFormData): number {
-  const current = safeParseAmount(review.emergencyFund);
-  const target = 600000; // ₹6L target
-
-  if (target <= 0) return 0;
-  return Math.min(Math.round((current / target) * 100), 100);
-}
-
-/**
- * Calculate Home Loan Progress
- * Assumes original loan was ₹15.5L (₹1,550,000)
- */
-export function calculateLoanProgress(review: MonthlyReviewFormData): number {
-  const outstanding = safeParseAmount(review.homeLoanOutstanding);
-  const originalLoan = 1550000; // ₹15.5L original loan
-
-  if (originalLoan <= 0) return 0;
-  const paid = originalLoan - outstanding;
-  return Math.min(Math.round((paid / originalLoan) * 100), 100);
-}
-
-/**
- * Calculate FIRE54 Score
- * Composite score based on:
- * - Savings rate (weight: 30%)
- * - Investment rate (weight: 25%)
- * - Emergency fund progress (weight: 20%)
- * - Loan progress (weight: 15%)
- * - Confidence score (weight: 10%)
- */
-export function calculateFIRE54Score(review: MonthlyReviewFormData): number {
-  const savingsRate = calculateSavingsRate(review);
-  const investmentRate = calculateInvestmentRate(review);
-  const emergencyFundProgress = calculateEmergencyFundProgress(review);
-  const loanProgress = calculateLoanProgress(review);
-  const confidence = review.confidence || 7;
-
-  // Normalize each component to 0-100 scale
-  const savingsScore = Math.min(savingsRate * 2, 100); // 50% savings = 100 points
-  const investmentScore = Math.min(investmentRate * 3.33, 100); // 30% investment = 100 points
-  const emergencyScore = emergencyFundProgress;
-  const loanScore = loanProgress;
-  const confidenceScore = confidence * 10; // 1-10 scale to 0-100
-
-  // Weighted average
-  const weightedScore =
-    savingsScore * 0.3 +
-    investmentScore * 0.25 +
-    emergencyScore * 0.2 +
-    loanScore * 0.15 +
-    confidenceScore * 0.1;
-
-  return Math.round(weightedScore);
-}
-
-/**
- * Calculate Retirement Score
- * Based on FIRE54 score with additional factors
- */
-export function calculateRetirementScore(review: MonthlyReviewFormData): number {
-  const fire54Score = calculateFIRE54Score(review);
-  const netWorth = calculateNetWorth(review);
-
-  // Bonus for high net worth (assuming ₹5Cr as FIRE target)
-  const netWorthBonus = Math.min((netWorth / 50000000) * 10, 10);
-
-  return Math.min(Math.round(fire54Score + netWorthBonus), 100);
-}
-
-/**
- * Get portfolio allocation data
- */
-export function getPortfolioAllocation(review: MonthlyReviewFormData): PortfolioAllocation[] {
-  return [
+export function getPortfolioAllocation(statement: MonthlyFinancialStatement): PortfolioAllocation[] {
+  const allocation: PortfolioAllocation[] = [
     {
       name: "Mutual Funds",
-      amount: safeParseAmount(review.mutualFundValue),
-      value: safeParseAmount(review.mutualFundValue) / 100000, // in Lakhs
-      color: "bg-emerald-500",
-    },
-    {
-      name: "PPF",
-      amount: safeParseAmount(review.ppfValue),
-      value: safeParseAmount(review.ppfValue) / 100000,
+      amount: 0,
+      value: safeParseAmount(statement.assets.mutualFunds) / 100000,
       color: "bg-blue-500",
     },
     {
+      name: "PPF",
+      amount: 0,
+      value: safeParseAmount(statement.assets.ppf) / 100000,
+      color: "bg-emerald-500",
+    },
+    {
       name: "NPS",
-      amount: safeParseAmount(review.npsValue),
-      value: safeParseAmount(review.npsValue) / 100000,
+      amount: 0,
+      value: safeParseAmount(statement.assets.nps) / 100000,
       color: "bg-violet-500",
     },
     {
-      name: "Property",
-      amount: 5000000,
-      value: 50,
+      name: "Emergency Fund",
+      amount: 0,
+      value: safeParseAmount(statement.assets.emergencyFund) / 100000,
       color: "bg-amber-500",
     },
     {
-      name: "Home Loan",
-      amount: safeParseAmount(review.homeLoanOutstanding),
-      value: safeParseAmount(review.homeLoanOutstanding) / 100000,
+      name: "Savings Account",
+      amount: 0,
+      value: safeParseAmount(statement.assets.savingsAccount) / 100000,
       color: "bg-rose-500",
-      liability: true,
+    },
+    {
+      name: "FD",
+      amount: 0,
+      value: safeParseAmount(statement.assets.fd) / 100000,
+      color: "bg-cyan-500",
+    },
+    {
+      name: "Gold",
+      amount: 0,
+      value: safeParseAmount(statement.assets.gold) / 100000,
+      color: "bg-yellow-500",
+    },
+    {
+      name: "Cash",
+      amount: 0,
+      value: safeParseAmount(statement.assets.cash) / 100000,
+      color: "bg-zinc-500",
+    },
+    {
+      name: "Property",
+      amount: 0,
+      value: safeParseAmount(statement.assets.property) / 100000,
+      color: "bg-indigo-500",
     },
   ];
+
+  // Add investments from the investments array
+  statement.investments.forEach((inv) => {
+    allocation.push({
+      name: inv.name || "Investment",
+      amount: safeParseAmount(inv.monthlyContribution),
+      value: safeParseAmount(inv.currentValue) / 100000,
+      color: "bg-blue-400",
+    });
+  });
+
+  // Add liabilities
+  if (safeParseAmount(statement.liabilities.homeLoanOutstanding) > 0) {
+    allocation.push({
+      name: "Home Loan",
+      amount: 0,
+      value: safeParseAmount(statement.liabilities.homeLoanOutstanding) / 100000,
+      color: "bg-red-500",
+      liability: true,
+    });
+  }
+  if (safeParseAmount(statement.liabilities.vehicleLoan) > 0) {
+    allocation.push({
+      name: "Vehicle Loan",
+      amount: 0,
+      value: safeParseAmount(statement.liabilities.vehicleLoan) / 100000,
+      color: "bg-red-400",
+      liability: true,
+    });
+  }
+  if (safeParseAmount(statement.liabilities.personalLoan) > 0) {
+    allocation.push({
+      name: "Personal Loan",
+      amount: 0,
+      value: safeParseAmount(statement.liabilities.personalLoan) / 100000,
+      color: "bg-red-300",
+      liability: true,
+    });
+  }
+  if (safeParseAmount(statement.liabilities.otherLoan) > 0) {
+    allocation.push({
+      name: "Other Loan",
+      amount: 0,
+      value: safeParseAmount(statement.liabilities.otherLoan) / 100000,
+      color: "bg-red-200",
+      liability: true,
+    });
+  }
+
+  return allocation.filter((item) => item.value > 0);
 }
 
 /**
- * Get goals progress data
+ * Get goals progress from MonthlyFinancialStatement
  */
-export function getGoalsProgress(review: MonthlyReviewFormData): GoalProgress[] {
-  const emergencyFundCurrent = safeParseAmount(review.emergencyFund);
-  const emergencyFundTarget = 600000;
-  const emergencyFundProgress = calculateEmergencyFundProgress(review);
-
-  const loanOutstanding = safeParseAmount(review.homeLoanOutstanding);
+export function getGoalsProgress(statement: MonthlyFinancialStatement): GoalProgress[] {
+  const netWorth = calculateNetWorthFromStatement(statement);
+  const emergencyFund = safeParseAmount(statement.assets.emergencyFund);
+  const homeLoanOutstanding = safeParseAmount(statement.liabilities.homeLoanOutstanding);
   const loanOriginal = 1550000;
-  const loanPaid = loanOriginal - loanOutstanding;
-  const loanProgress = calculateLoanProgress(review);
+  const loanPaid = loanOriginal - homeLoanOutstanding;
+  const loanProgress = loanOriginal > 0 ? Math.min(Math.round((loanPaid / loanOriginal) * 100), 100) : 100;
 
-  // Retirement: Assuming ₹5Cr target, using net worth as proxy
-  const netWorth = calculateNetWorth(review);
-  const retirementTarget = 50000000;
-  const retirementProgress = Math.min(Math.round((netWorth / retirementTarget) * 100), 100);
-
-  // Travel: Assuming ₹8L target, using bank balance as proxy
-  const travelCurrent = safeParseAmount(review.bankBalance);
-  const travelTarget = 800000;
-  const travelProgress = Math.min(Math.round((travelCurrent / travelTarget) * 100), 100);
+  const travelTotal = safeParseAmount(statement.expenses.travel.flights) + 
+                      safeParseAmount(statement.expenses.travel.hotels) + 
+                      safeParseAmount(statement.expenses.travel.taxi) + 
+                      safeParseAmount(statement.expenses.travel.holiday);
 
   return [
     {
       name: "Emergency Fund",
-      progress: emergencyFundProgress,
+      progress: calculateEmergencyFundProgressFromStatement(statement),
       target: "₹6L",
-      current: `₹${(emergencyFundCurrent / 100000).toFixed(1)}L`,
+      current: `₹${(emergencyFund / 100000).toFixed(1)}L`,
       color: "bg-emerald-500",
     },
     {
@@ -256,16 +247,16 @@ export function getGoalsProgress(review: MonthlyReviewFormData): GoalProgress[] 
     },
     {
       name: "Retirement",
-      progress: retirementProgress,
+      progress: Math.min(Math.round((netWorth / 50000000) * 100), 100),
       target: "₹5 Cr",
       current: `₹${(netWorth / 10000000).toFixed(2)} Cr`,
       color: "bg-violet-500",
     },
     {
       name: "Travel",
-      progress: travelProgress,
+      progress: Math.min(Math.round((travelTotal / 800000) * 100), 100),
       target: "₹8L",
-      current: `₹${(travelCurrent / 100000).toFixed(1)}L`,
+      current: `₹${(travelTotal / 100000).toFixed(1)}L`,
       color: "bg-amber-500",
     },
   ];
@@ -282,26 +273,273 @@ export function getFinancialMetrics(): FinancialMetrics | null {
     return null;
   }
 
-  // Check if review has meaningful data
-  const hasData =
-    safeParseAmount(review.netSalary) > 0 ||
-    safeParseAmount(review.mutualFundValue) > 0 ||
-    safeParseAmount(review.ppfValue) > 0 ||
-    safeParseAmount(review.bankBalance) > 0;
+  // Handle new format (MonthlyFinancialStatement)
+  return getFinancialMetricsFromStatement(review);
+}
+
+// =========================================
+// NEW: Calculation Functions for MonthlyFinancialStatement
+// =========================================
+
+/**
+ * Calculate total monthly income from all income sources
+ */
+export function calculateMonthlyIncome(statement: MonthlyFinancialStatement): number {
+  const income = statement.income;
+  return (
+    safeParseAmount(income.salaryInHand) +
+    safeParseAmount(income.daAllowances) +
+    safeParseAmount(income.bonus) +
+    safeParseAmount(income.arrears) +
+    safeParseAmount(income.interestIncome) +
+    safeParseAmount(income.dividend) +
+    safeParseAmount(income.rentalIncome) +
+    safeParseAmount(income.otherIncome)
+  );
+}
+
+/**
+ * Calculate total expenses from all expense categories
+ */
+export function calculateTotalExpenses(statement: MonthlyFinancialStatement): number {
+  const expenses = statement.expenses;
+  const household = expenses.household;
+  const lifestyle = expenses.lifestyle;
+  const travel = expenses.travel;
+  const family = expenses.family;
+  const misc = expenses.misc;
+
+  return (
+    safeParseAmount(household.groceries) +
+    safeParseAmount(household.electricity) +
+    safeParseAmount(household.gas) +
+    safeParseAmount(household.internet) +
+    safeParseAmount(household.maintenance) +
+    safeParseAmount(household.houseHelp) +
+    safeParseAmount(household.fuel) +
+    safeParseAmount(lifestyle.restaurants) +
+    safeParseAmount(lifestyle.shopping) +
+    safeParseAmount(lifestyle.clothes) +
+    safeParseAmount(lifestyle.entertainment) +
+    safeParseAmount(lifestyle.gym) +
+    safeParseAmount(lifestyle.subscriptions) +
+    safeParseAmount(travel.flights) +
+    safeParseAmount(travel.hotels) +
+    safeParseAmount(travel.taxi) +
+    safeParseAmount(travel.holiday) +
+    safeParseAmount(family.parents) +
+    safeParseAmount(family.medical) +
+    safeParseAmount(family.children) +
+    safeParseAmount(family.gifts) +
+    safeParseAmount(misc.unexpected) +
+    safeParseAmount(misc.repairs) +
+    safeParseAmount(misc.other)
+  );
+}
+
+/**
+ * Calculate investment rate from MonthlyFinancialStatement
+ * Investment Rate = (Total Investments / Total Income) * 100
+ */
+export function calculateInvestmentRateFromStatement(statement: MonthlyFinancialStatement): number {
+  const totalIncome = calculateMonthlyIncome(statement);
+  const totalInvestments = safeParseAmount(statement.cashAllocation.investments);
+
+  if (totalIncome <= 0) return 0;
+
+  return Math.round((totalInvestments / totalIncome) * 1000) / 10;
+}
+
+/**
+ * Calculate savings rate from MonthlyFinancialStatement
+ * Savings Rate = ((Total Income - Total Expenses) / Total Income) * 100
+ */
+export function calculateSavingsRateFromStatement(statement: MonthlyFinancialStatement): number {
+  const totalIncome = calculateMonthlyIncome(statement);
+  const totalExpenses = calculateTotalExpenses(statement);
+
+  if (totalIncome <= 0) return 0;
+
+  const savings = totalIncome - totalExpenses;
+  return Math.round((savings / totalIncome) * 1000) / 10;
+}
+
+/**
+ * Calculate net worth from MonthlyFinancialStatement
+ * Net Worth = (Financial Assets + Property) - Liabilities
+ */
+export function calculateNetWorthFromStatement(statement: MonthlyFinancialStatement): number {
+  const assets = statement.assets;
+  const liabilities = statement.liabilities;
+
+  const financialAssets =
+    safeParseAmount(assets.savingsAccount) +
+    safeParseAmount(assets.emergencyFund) +
+    safeParseAmount(assets.mutualFunds) +
+    safeParseAmount(assets.ppf) +
+    safeParseAmount(assets.nps) +
+    safeParseAmount(assets.fd) +
+    safeParseAmount(assets.gold) +
+    safeParseAmount(assets.cash);
+
+  const propertyValue = safeParseAmount(assets.property);
+
+  const totalLiabilities =
+    safeParseAmount(liabilities.homeLoanOutstanding) +
+    safeParseAmount(liabilities.vehicleLoan) +
+    safeParseAmount(liabilities.personalLoan) +
+    safeParseAmount(liabilities.otherLoan);
+
+  return financialAssets + propertyValue - totalLiabilities;
+}
+
+/**
+ * Calculate debt ratio from MonthlyFinancialStatement
+ * Debt Ratio = (Total Liabilities / Total Assets) * 100
+ */
+export function calculateDebtRatio(statement: MonthlyFinancialStatement): number {
+  const assets = statement.assets;
+  const liabilities = statement.liabilities;
+
+  const totalAssets =
+    safeParseAmount(assets.savingsAccount) +
+    safeParseAmount(assets.emergencyFund) +
+    safeParseAmount(assets.mutualFunds) +
+    safeParseAmount(assets.ppf) +
+    safeParseAmount(assets.nps) +
+    safeParseAmount(assets.fd) +
+    safeParseAmount(assets.gold) +
+    safeParseAmount(assets.property) +
+    safeParseAmount(assets.cash);
+
+  const totalLiabilities =
+    safeParseAmount(liabilities.homeLoanOutstanding) +
+    safeParseAmount(liabilities.vehicleLoan) +
+    safeParseAmount(liabilities.personalLoan) +
+    safeParseAmount(liabilities.otherLoan);
+
+  if (totalAssets <= 0) return 0;
+
+  return Math.round((totalLiabilities / totalAssets) * 1000) / 10;
+}
+
+/**
+ * Calculate emergency fund progress from MonthlyFinancialStatement
+ * Assumes target is ₹6L (₹600,000)
+ */
+export function calculateEmergencyFundProgressFromStatement(statement: MonthlyFinancialStatement): number {
+  const current = safeParseAmount(statement.assets.emergencyFund);
+  const target = 600000; // ₹6L target
+
+  if (target <= 0) return 0;
+  return Math.min(Math.round((current / target) * 100), 100);
+}
+
+/**
+ * Verify cash allocation balance
+ * Returns true if income = allocation, false otherwise
+ */
+export function calculateCashAllocation(statement: MonthlyFinancialStatement): {
+  isBalanced: boolean;
+  income: number;
+  allocation: number;
+  difference: number;
+} {
+  const income = calculateMonthlyIncome(statement);
+  const allocation = statement.cashAllocation;
+
+  const totalAllocation =
+    safeParseAmount(allocation.investments) +
+    safeParseAmount(allocation.emergencyFund) +
+    safeParseAmount(allocation.savingsAccount) +
+    safeParseAmount(allocation.homeLoanPrepayment) +
+    safeParseAmount(allocation.monthlyExpenses) +
+    safeParseAmount(allocation.cashRemaining);
+
+  const difference = income - totalAllocation;
+  const isBalanced = Math.abs(difference) < 1; // Allow for rounding errors
+
+  return {
+    isBalanced,
+    income,
+    allocation: totalAllocation,
+    difference,
+  };
+}
+
+/**
+ * Calculate financial health score from MonthlyFinancialStatement
+ * Composite score based on multiple factors
+ */
+export function calculateFinancialHealthScore(statement: MonthlyFinancialStatement): number {
+  const savingsRate = calculateSavingsRateFromStatement(statement);
+  const investmentRate = calculateInvestmentRateFromStatement(statement);
+  const emergencyFundProgress = calculateEmergencyFundProgressFromStatement(statement);
+  const debtRatio = calculateDebtRatio(statement);
+
+  // Normalize each component to 0-100 scale
+  const savingsScore = Math.min(savingsRate * 2, 100); // 50% savings = 100 points
+  const investmentScore = Math.min(investmentRate * 3.33, 100); // 30% investment = 100 points
+  const emergencyScore = emergencyFundProgress;
+  const debtScore = Math.max(100 - debtRatio * 2, 0); // Lower debt is better
+
+  // Weighted average
+  const weightedScore =
+    savingsScore * 0.3 +
+    investmentScore * 0.25 +
+    emergencyScore * 0.25 +
+    debtScore * 0.2;
+
+  return Math.round(weightedScore);
+}
+
+/**
+ * Get financial metrics from MonthlyFinancialStatement
+ */
+function getFinancialMetricsFromStatement(statement: MonthlyFinancialStatement): FinancialMetrics | null {
+  const totalIncome = calculateMonthlyIncome(statement);
+  const totalExpenses = calculateTotalExpenses(statement);
+
+  // Check if statement has meaningful data
+  const hasData = totalIncome > 0 || calculateNetWorthFromStatement(statement) > 0;
 
   if (!hasData) {
     return null;
   }
 
+  const expenseRatio = totalIncome > 0 ? Math.round((totalExpenses / totalIncome) * 1000) / 10 : 0;
+  const debtRatio = calculateDebtRatio(statement);
+  const netWorth = calculateNetWorthFromStatement(statement);
+  const financialIndependenceProgress = Math.min(Math.round((netWorth / 50000000) * 100), 100); // Assuming ₹5Cr as FIRE target
+
   return {
-    netWorth: calculateNetWorth(review),
-    financialAssets: calculateFinancialAssets(review),
-    savingsRate: calculateSavingsRate(review),
-    investmentRate: calculateInvestmentRate(review),
-    emergencyFundProgress: calculateEmergencyFundProgress(review),
-    loanProgress: calculateLoanProgress(review),
-    fire54Score: calculateFIRE54Score(review),
-    retirementScore: calculateRetirementScore(review),
+    netWorth,
+    financialAssets:
+      safeParseAmount(statement.assets.savingsAccount) +
+      safeParseAmount(statement.assets.emergencyFund) +
+      safeParseAmount(statement.assets.mutualFunds) +
+      safeParseAmount(statement.assets.ppf) +
+      safeParseAmount(statement.assets.nps) +
+      safeParseAmount(statement.assets.fd) +
+      safeParseAmount(statement.assets.gold) +
+      safeParseAmount(statement.assets.cash),
+    savingsRate: calculateSavingsRateFromStatement(statement),
+    investmentRate: calculateInvestmentRateFromStatement(statement),
+    emergencyFundProgress: calculateEmergencyFundProgressFromStatement(statement),
+    loanProgress: Math.min(
+      Math.round(
+        ((safeParseAmount(statement.liabilities.homeLoanOutstanding) / 1550000) * 100) * -1 + 100
+      ),
+      100
+    ),
+    fire54Score: calculateFinancialHealthScore(statement),
+    retirementScore: Math.min(
+      Math.round(calculateFinancialHealthScore(statement) + (netWorth / 50000000) * 10),
+      100
+    ),
+    expenseRatio,
+    debtRatio,
+    financialIndependenceProgress,
   };
 }
 

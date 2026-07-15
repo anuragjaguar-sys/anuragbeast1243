@@ -1,4 +1,4 @@
-import { getMonthKey, getMonthLabel, type MonthlyReviewFormData } from "./monthly-review";
+import { getMonthKey, getMonthLabel, type MonthlyFinancialStatement } from "./monthly-review";
 import { loadMonthlyReview } from "./storage";
 
 export type ExpenseCategory = {
@@ -49,30 +49,37 @@ export function formatINR(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
-function buildExpenseCategories(review: MonthlyReviewFormData): ExpenseCategory[] {
+function buildExpenseCategories(statement: MonthlyFinancialStatement): ExpenseCategory[] {
+  const expenses = statement.expenses;
+  const household = expenses.household;
+  const lifestyle = expenses.lifestyle;
+  const travel = expenses.travel;
+  const family = expenses.family;
+  const misc = expenses.misc;
+
   return [
     {
       id: "living",
       category: "Living Expenses",
-      amount: parseAmount(review.livingExpenses),
+      amount: parseAmount(household.groceries) + parseAmount(household.electricity) + parseAmount(household.gas) + parseAmount(household.internet) + parseAmount(household.maintenance) + parseAmount(household.houseHelp) + parseAmount(household.fuel),
       color: EXPENSE_COLORS.living,
     },
     {
       id: "travel",
       category: "Travel",
-      amount: parseAmount(review.travel),
+      amount: parseAmount(travel.flights) + parseAmount(travel.hotels) + parseAmount(travel.taxi) + parseAmount(travel.holiday),
       color: EXPENSE_COLORS.travel,
     },
     {
       id: "medical",
       category: "Medical",
-      amount: parseAmount(review.medical),
+      amount: parseAmount(family.medical),
       color: EXPENSE_COLORS.medical,
     },
     {
       id: "other",
       category: "Other Expenses",
-      amount: parseAmount(review.otherExpenses),
+      amount: parseAmount(lifestyle.restaurants) + parseAmount(lifestyle.shopping) + parseAmount(lifestyle.clothes) + parseAmount(lifestyle.entertainment) + parseAmount(lifestyle.gym) + parseAmount(lifestyle.subscriptions) + parseAmount(family.parents) + parseAmount(family.children) + parseAmount(family.gifts) + parseAmount(misc.unexpected) + parseAmount(misc.repairs) + parseAmount(misc.other),
       color: EXPENSE_COLORS.other,
     },
   ];
@@ -84,23 +91,20 @@ function calcRate(numerator: number, denominator: number): number {
 }
 
 /**
- * Transform a Monthly Review record into spending analytics.
- * Returns null when the review has no usable financial data.
+ * Transform a Monthly Financial Statement into spending analytics.
+ * Returns null when the statement has no usable financial data.
  */
 export function computeSpendingAnalyticsFromReview(
-  review: MonthlyReviewFormData,
+  statement: MonthlyFinancialStatement,
   monthKey: string = getMonthKey(),
   monthLabel: string = getMonthLabel()
 ): SpendingAnalyticsData | null {
+  const income = statement.income;
   const totalIncome =
-    parseAmount(review.netSalary) + parseAmount(review.otherIncome);
-  const expenseCategories = buildExpenseCategories(review);
+    parseAmount(income.salaryInHand) + parseAmount(income.daAllowances) + parseAmount(income.bonus) + parseAmount(income.arrears) + parseAmount(income.interestIncome) + parseAmount(income.dividend) + parseAmount(income.rentalIncome) + parseAmount(income.otherIncome);
+  const expenseCategories = buildExpenseCategories(statement);
   const totalMonthlySpending = expenseCategories.reduce((sum, c) => sum + c.amount, 0);
-  const totalInvestments =
-    parseAmount(review.ppf) +
-    parseAmount(review.mutualFundSip) +
-    parseAmount(review.additionalMutualFund) +
-    parseAmount(review.nps);
+  const totalInvestments = parseAmount(statement.cashAllocation.investments);
 
   if (totalIncome === 0 && totalMonthlySpending === 0 && totalInvestments === 0) {
     return null;

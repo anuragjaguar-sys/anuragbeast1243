@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadMonthlyReview } from "@/lib/storage";
+import { loadMonthlyReview, migrateToNewFormat } from "@/lib/storage";
 import {
   formatINR,
   getFinancialMetrics,
   getPortfolioAllocation,
   getGoalsProgress,
+  getAICFOInsights,
 } from "@/lib/financial-engine";
-import type { MonthlyReviewFormData } from "@/lib/monthly-review";
+import type { MonthlyFinancialStatement } from "@/lib/monthly-review";
+import FinancialDisciplineCard from "@/components/dashboard/FinancialDisciplineCard";
 
 function formatTodayDate(): string {
   return new Date().toLocaleDateString("en-IN", {
@@ -64,9 +66,13 @@ export default function Home() {
   const [metrics, setMetrics] = useState<ReturnType<typeof getFinancialMetrics> | null>(null);
   const [portfolioItems, setPortfolioItems] = useState<ReturnType<typeof getPortfolioAllocation>>([]);
   const [goals, setGoals] = useState<ReturnType<typeof getGoalsProgress>>([]);
+  const [aicfoInsights, setAicfoInsights] = useState<ReturnType<typeof getAICFOInsights> | null>(null);
   const [hasData, setHasData] = useState(false);
 
   useEffect(() => {
+    // Run one-time migration on app load
+    migrateToNewFormat();
+
     const loadData = () => {
       const review = loadMonthlyReview();
       if (review) {
@@ -75,6 +81,7 @@ export default function Home() {
           setMetrics(financialMetrics);
           setPortfolioItems(getPortfolioAllocation(review));
           setGoals(getGoalsProgress(review));
+          setAicfoInsights(getAICFOInsights(review));
           setHasData(true);
         } else {
           setHasData(false);
@@ -123,6 +130,47 @@ export default function Home() {
           value: `${metrics.fire54Score}/100`,
           accent: "amber" as const,
           subtext: metrics.fire54Score >= 80 ? "Strong overall" : "Good progress",
+        },
+      ]
+    : [];
+
+  const performanceKPIs = metrics
+    ? [
+        {
+          label: "Savings Rate",
+          value: `${metrics.savingsRate}%`,
+          accent: "emerald" as const,
+          subtext: "Income saved",
+        },
+        {
+          label: "Investment Rate",
+          value: `${metrics.investmentRate}%`,
+          accent: "blue" as const,
+          subtext: "Income invested",
+        },
+        {
+          label: "Expense Ratio",
+          value: metrics.expenseRatio ? `${metrics.expenseRatio}%` : "N/A",
+          accent: "rose" as const,
+          subtext: "Income spent",
+        },
+        {
+          label: "Debt Ratio",
+          value: metrics.debtRatio ? `${metrics.debtRatio}%` : "N/A",
+          accent: "amber" as const,
+          subtext: "Liabilities / Assets",
+        },
+        {
+          label: "Emergency Fund",
+          value: `${metrics.emergencyFundProgress}%`,
+          accent: "violet" as const,
+          subtext: "Target: ₹6L",
+        },
+        {
+          label: "FIRE Progress",
+          value: metrics.financialIndependenceProgress ? `${metrics.financialIndependenceProgress}%` : "N/A",
+          accent: "emerald" as const,
+          subtext: "Target: ₹5Cr",
         },
       ]
     : [];
@@ -246,7 +294,33 @@ export default function Home() {
               </div>
             </div>
           ))}
+          <FinancialDisciplineCard />
         </section>
+
+        {/* Performance KPIs */}
+        {performanceKPIs.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 backdrop-blur-sm">
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-white">Performance Metrics</h2>
+              <p className="mt-0.5 font-mono text-[11px] text-zinc-500 uppercase tracking-wider">
+                Financial health indicators
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              {performanceKPIs.map((kpi) => (
+                <div key={kpi.label} className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
+                  <p className="font-mono text-[10px] tracking-wider text-zinc-500 uppercase">
+                    {kpi.label}
+                  </p>
+                  <p className={`mt-2 text-lg font-semibold ${accentText[kpi.accent]}`}>
+                    {kpi.value}
+                  </p>
+                  <p className="mt-1 text-[10px] text-zinc-600">{kpi.subtext}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Two-column layout */}
         <section className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -388,8 +462,13 @@ export default function Home() {
 
               <div className="mb-6 flex flex-wrap items-center gap-3">
                 <span className="text-sm text-zinc-400">Overall Financial Health</span>
-                <span className="rounded-lg bg-emerald-500/15 px-4 py-1.5 font-mono text-sm font-semibold tracking-wide text-emerald-400 ring-1 ring-emerald-500/25">
-                  GOOD
+                <span className={`rounded-lg px-4 py-1.5 font-mono text-sm font-semibold tracking-wide ring-1 ${
+                  aicfoInsights?.overallHealth === "Excellent" ? "bg-emerald-500/15 text-emerald-400 ring-emerald-500/25" :
+                  aicfoInsights?.overallHealth === "Good" ? "bg-blue-500/15 text-blue-400 ring-blue-500/25" :
+                  aicfoInsights?.overallHealth === "Fair" ? "bg-amber-500/15 text-amber-400 ring-amber-500/25" :
+                  "bg-rose-500/15 text-rose-400 ring-rose-500/25"
+                }`}>
+                  {aicfoInsights?.overallHealth || "N/A"}
                 </span>
               </div>
 
@@ -399,7 +478,7 @@ export default function Home() {
                     Biggest Strength
                   </p>
                   <p className="mt-2 text-sm font-medium leading-relaxed text-emerald-300">
-                    Excellent Savings Discipline
+                    {aicfoInsights?.biggestStrength || "N/A"}
                   </p>
                 </div>
                 <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
@@ -407,7 +486,7 @@ export default function Home() {
                     Biggest Risk
                   </p>
                   <p className="mt-2 text-sm font-medium leading-relaxed text-rose-300">
-                    F&amp;O Trading
+                    {aicfoInsights?.biggestRisk || "N/A"}
                   </p>
                 </div>
                 <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:col-span-1">
@@ -415,8 +494,7 @@ export default function Home() {
                     Recommendation
                   </p>
                   <p className="mt-2 text-sm leading-relaxed text-zinc-300">
-                    Continue ₹50k home loan prepayment. After loan closure redirect entire amount
-                    into equity mutual funds.
+                    {aicfoInsights?.recommendation || "N/A"}
                   </p>
                 </div>
               </div>
