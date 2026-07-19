@@ -10,14 +10,67 @@
 // =========================================
 
 /**
+ * Daily Reflection - One reflection per day
+ */
+export type DailyReflection = {
+  date: string;              // YYYY-MM-DD
+  bestDecision: string;
+  temptationResisted: string;
+  gratitude: string;
+};
+
+/**
+ * Monthly Habit Entry - Tracks habit completion per month
+ */
+export type MonthlyHabitEntry = {
+  monthKey: string;          // YYYY-MM
+  monthlyReviewCompleted: boolean;
+  salaryAllocated: boolean;
+  sipCompleted: boolean;
+  loanPaymentCompleted: boolean;
+  emergencyFundUpdated: boolean;
+  noFAndOTrading: boolean;   // Auto-calculated from streak
+  dailyReflectionCompleted: boolean;
+};
+
+/**
+ * Behaviour Achievement - Unlocked achievements
+ */
+export type BehaviourAchievement = {
+  id: string;
+  name: string;
+  icon: string;
+  unlockedAt: string;        // YYYY-MM-DD
+  description: string;
+};
+
+/**
+ * Behaviour Goal - User-set goals
+ */
+export type BehaviourGoal = {
+  id: string;
+  type: "streak" | "score" | "reflections";
+  target: number;
+  current: number;
+  deadline?: string;         // YYYY-MM-DD
+};
+
+/**
  * BehaviourProfile - Raw data stored in localStorage
  * Only raw data is stored. All calculated values are computed dynamically.
  */
 export type BehaviourProfile = {
+  // Sprint 3A fields
   recoveryStartDate: string;              // ISO date string (YYYY-MM-DD)
   lastTradeDate: string;                  // ISO date string (YYYY-MM-DD)
   longestStreak: number;                  // days (raw data, updated when streak is broken)
   estimatedMonthlyTradingLoss: number;    // INR (configurable, default ₹30,000)
+  
+  // Sprint 3B fields
+  dailyReflections: DailyReflection[];
+  monthlyHabits: MonthlyHabitEntry[];
+  achievements: BehaviourAchievement[];
+  goals: BehaviourGoal[];
 };
 
 // =========================================
@@ -236,6 +289,10 @@ export function initializeBehaviourProfile(
     lastTradeDate: lastTradeDate || today,
     longestStreak: 0,
     estimatedMonthlyTradingLoss: estimatedMonthlyTradingLoss || 30000, // ₹30,000 default
+    dailyReflections: [],
+    monthlyHabits: [],
+    achievements: [],
+    goals: [],
   };
 
   saveBehaviourProfile(profile);
@@ -256,10 +313,243 @@ export function getBehaviourProfile(): BehaviourProfile {
 /**
  * Update behaviour profile fields
  * Only updates provided fields, preserves others
+ * Dispatches custom event for same-tab updates
  */
 export function updateBehaviourProfile(updates: Partial<BehaviourProfile>): BehaviourProfile {
   const existing = getBehaviourProfile();
   const updated = { ...existing, ...updates };
   saveBehaviourProfile(updated);
+  
+  // Dispatch custom event for same-tab updates
+  if (isBrowser()) {
+    window.dispatchEvent(new CustomEvent('behaviourProfileUpdated'));
+  }
+  
   return updated;
+}
+
+// =========================================
+// DAILY REFLECTION FUNCTIONS
+// =========================================
+
+/**
+ * Add or update daily reflection
+ * Only one reflection per day
+ */
+export function addDailyReflection(reflection: Omit<DailyReflection, "date">): BehaviourProfile {
+  const today = new Date().toISOString().split('T')[0];
+  const profile = getBehaviourProfile();
+  
+  // Remove existing reflection for today if any
+  const existingIndex = profile.dailyReflections.findIndex(r => r.date === today);
+  const newReflections = [...profile.dailyReflections];
+  
+  if (existingIndex >= 0) {
+    newReflections[existingIndex] = { ...reflection, date: today };
+  } else {
+    newReflections.push({ ...reflection, date: today });
+  }
+  
+  return updateBehaviourProfile({ dailyReflections: newReflections });
+}
+
+/**
+ * Get daily reflection for a specific date
+ */
+export function getDailyReflection(date: string): DailyReflection | null {
+  const profile = getBehaviourProfile();
+  return profile.dailyReflections.find(r => r.date === date) || null;
+}
+
+/**
+ * Check if reflection exists for today
+ */
+export function hasReflectionToday(): boolean {
+  const today = new Date().toISOString().split('T')[0];
+  return getDailyReflection(today) !== null;
+}
+
+// =========================================
+// MONTHLY HABIT FUNCTIONS
+// =========================================
+
+/**
+ * Get or create monthly habit entry for current month
+ */
+export function getMonthlyHabitEntry(monthKey?: string): MonthlyHabitEntry {
+  const profile = getBehaviourProfile();
+  const currentMonthKey = monthKey || getCurrentMonthKey();
+  
+  let entry = profile.monthlyHabits.find(h => h.monthKey === currentMonthKey);
+  
+  if (!entry) {
+    entry = {
+      monthKey: currentMonthKey,
+      monthlyReviewCompleted: false,
+      salaryAllocated: false,
+      sipCompleted: false,
+      loanPaymentCompleted: false,
+      emergencyFundUpdated: false,
+      noFAndOTrading: calculateCurrentStreak(profile.lastTradeDate) > 0,
+      dailyReflectionCompleted: false,
+    };
+  }
+  
+  return entry;
+}
+
+/**
+ * Update monthly habit entry
+ */
+export function updateMonthlyHabitEntry(monthKey: string, updates: Partial<MonthlyHabitEntry>): BehaviourProfile {
+  const profile = getBehaviourProfile();
+  const existingIndex = profile.monthlyHabits.findIndex(h => h.monthKey === monthKey);
+  const newHabits = [...profile.monthlyHabits];
+  
+  if (existingIndex >= 0) {
+    newHabits[existingIndex] = { ...newHabits[existingIndex], ...updates };
+  } else {
+    newHabits.push({ 
+      monthKey,
+      monthlyReviewCompleted: false,
+      salaryAllocated: false,
+      sipCompleted: false,
+      loanPaymentCompleted: false,
+      emergencyFundUpdated: false,
+      noFAndOTrading: calculateCurrentStreak(profile.lastTradeDate) > 0,
+      dailyReflectionCompleted: false,
+      ...updates 
+    });
+  }
+  
+  return updateBehaviourProfile({ monthlyHabits: newHabits });
+}
+
+/**
+ * Get current month key helper
+ */
+function getCurrentMonthKey(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+}
+
+// =========================================
+// ACHIEVEMENT FUNCTIONS
+// =========================================
+
+/**
+ * Unlock achievement
+ */
+export function unlockAchievement(achievement: Omit<BehaviourAchievement, "unlockedAt">): BehaviourProfile {
+  const profile = getBehaviourProfile();
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Check if already unlocked
+  if (profile.achievements.find(a => a.id === achievement.id)) {
+    return profile;
+  }
+  
+  const newAchievement: BehaviourAchievement = {
+    ...achievement,
+    unlockedAt: today,
+  };
+  
+  return updateBehaviourProfile({ 
+    achievements: [...profile.achievements, newAchievement] 
+  });
+}
+
+/**
+ * Check and unlock achievements based on current state
+ */
+export function checkAchievements(profile: BehaviourProfile): BehaviourProfile {
+  const currentStreak = calculateCurrentStreak(profile.lastTradeDate);
+  const reflectionCount = profile.dailyReflections.length;
+  const updatedProfile = { ...profile };
+  
+  // 30 Days F&O Free
+  if (currentStreak >= 30 && !updatedProfile.achievements.find(a => a.id === "streak-30")) {
+    updatedProfile.achievements.push({
+      id: "streak-30",
+      name: "30 Days F&O Free",
+      icon: "🥉",
+      unlockedAt: new Date().toISOString().split('T')[0],
+      description: "Maintained F&O-free discipline for 30 days",
+    });
+  }
+  
+  // 100 Days F&O Free
+  if (currentStreak >= 100 && !updatedProfile.achievements.find(a => a.id === "streak-100")) {
+    updatedProfile.achievements.push({
+      id: "streak-100",
+      name: "100 Days F&O Free",
+      icon: "🥈",
+      unlockedAt: new Date().toISOString().split('T')[0],
+      description: "Maintained F&O-free discipline for 100 days",
+    });
+  }
+  
+  // 365 Days F&O Free
+  if (currentStreak >= 365 && !updatedProfile.achievements.find(a => a.id === "streak-365")) {
+    updatedProfile.achievements.push({
+      id: "streak-365",
+      name: "365 Days F&O Free",
+      icon: "🥇",
+      unlockedAt: new Date().toISOString().split('T')[0],
+      description: "Maintained F&O-free discipline for one year",
+    });
+  }
+  
+  // 30 Daily Reflections
+  if (reflectionCount >= 30 && !updatedProfile.achievements.find(a => a.id === "reflections-30")) {
+    updatedProfile.achievements.push({
+      id: "reflections-30",
+      name: "30 Daily Reflections",
+      icon: "📝",
+      unlockedAt: new Date().toISOString().split('T')[0],
+      description: "Completed 30 daily reflections",
+    });
+  }
+  
+  // Save if achievements were added
+  if (updatedProfile.achievements.length !== profile.achievements.length) {
+    saveBehaviourProfile(updatedProfile);
+  }
+  
+  return updatedProfile;
+}
+
+// =========================================
+// GOAL FUNCTIONS
+// =========================================
+
+/**
+ * Add or update goal
+ */
+export function setGoal(goal: BehaviourGoal): BehaviourProfile {
+  const profile = getBehaviourProfile();
+  const existingIndex = profile.goals.findIndex(g => g.id === goal.id);
+  const newGoals = [...profile.goals];
+  
+  if (existingIndex >= 0) {
+    newGoals[existingIndex] = goal;
+  } else {
+    newGoals.push(goal);
+  }
+  
+  return updateBehaviourProfile({ goals: newGoals });
+}
+
+/**
+ * Update goal progress
+ */
+export function updateGoalProgress(goalId: string, current: number): BehaviourProfile {
+  const profile = getBehaviourProfile();
+  const goal = profile.goals.find(g => g.id === goalId);
+  
+  if (!goal) return profile;
+  
+  return setGoal({ ...goal, current });
 }

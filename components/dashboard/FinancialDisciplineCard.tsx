@@ -21,15 +21,25 @@ export default function FinancialDisciplineCard() {
 
     loadData();
 
-    // Listen for localStorage changes
+    // Listen for localStorage changes (cross-tab)
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "fire54_behaviour_profile") {
         loadData();
       }
     };
 
+    // Listen for custom event (same-tab updates)
+    const handleBehaviourProfileUpdate = () => {
+      loadData();
+    };
+
     window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    window.addEventListener("behaviourProfileUpdated", handleBehaviourProfileUpdate);
+    
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("behaviourProfileUpdated", handleBehaviourProfileUpdate);
+    };
   }, []);
 
   if (!data) return null;
