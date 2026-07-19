@@ -272,3 +272,4 @@ export function clearAllMonthlyReviews(): void {
   if (!isBrowser()) return;
   localStorage.removeItem(STORAGE_KEY);
 }
+
