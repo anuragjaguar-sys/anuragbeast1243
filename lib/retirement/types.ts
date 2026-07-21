@@ -33,4 +33,18 @@ export interface RetirementProjection {
   yearlyProjection: YearProjection[];
 
   isOnTrack: boolean;
+
+  // Retirement Intelligence
+  yearsLeft: number;
+  fireReadiness: number;
+  surplus: number;
+  monthlyIncomeGap: number;
+
+  status:
+    | "Excellent"
+    | "On Track"
+    | "Needs Improvement"
+    | "Critical";
+
+  recommendations: string[];
 }

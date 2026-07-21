@@ -11,7 +11,8 @@ import {
 } from "@/lib/financial-engine";
 import type { MonthlyFinancialStatement } from "@/lib/monthly-review";
 import FinancialDisciplineCard from "@/components/dashboard/FinancialDisciplineCard";
-
+import RetirementCard from "@/components/dashboard/RetirementCard";
+import RetirementGrowthChart from "@/components/dashboard/RetirementGrowthChart";
 function formatTodayDate(): string {
   return new Date().toLocaleDateString("en-IN", {
     weekday: "long",
@@ -321,7 +322,12 @@ export default function Home() {
             </div>
           </section>
         )}
+{/* Retirement Intelligence */}
 
+<section className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
+  <RetirementCard />
+  <RetirementGrowthChart />
+</section>
         {/* Two-column layout */}
         <section className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Portfolio Allocation */}

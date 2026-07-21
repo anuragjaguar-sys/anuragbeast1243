@@ -1,4 +1,9 @@
-import { RetirementAssumptions, RetirementProjection, YearProjection } from "./types";
+import {
+  RetirementAssumptions,
+  RetirementProjection,
+  YearProjection,
+} from "./types";
+
 import {
   calculateAnnualRetirementIncome,
   calculateFutureMonthlyIncome,
@@ -47,13 +52,81 @@ export function generateRetirementProjection(
     });
   }
 
+  // ============================
+  // Retirement Intelligence
+  // ============================
+
+  const fireReadiness = Math.min(
+    (corpus / requiredCorpus) * 100,
+    100
+  );
+
+  const surplus = corpus - requiredCorpus;
+
+  const monthlyIncomeGap = Math.max(
+    assumptions.desiredMonthlyIncome -
+      assumptions.monthlyPension,
+    0
+  );
+
+  const status =
+    fireReadiness >= 100
+      ? "Excellent"
+      : fireReadiness >= 80
+      ? "On Track"
+      : fireReadiness >= 60
+      ? "Needs Improvement"
+      : "Critical";
+
+  const recommendations: string[] = [];
+
+  if (fireReadiness < 100) {
+    recommendations.push(
+      "Increase monthly investment to improve retirement readiness."
+    );
+  }
+
+  if (monthlyIncomeGap > 0) {
+    recommendations.push(
+      "Plan additional investments to bridge your retirement income gap."
+    );
+  }
+
+  if (corpus >= requiredCorpus) {
+    recommendations.push(
+      "You are on track to achieve your retirement goal."
+    );
+  }
+
   return {
     currentCorpus: assumptions.currentCorpus,
+
     projectedCorpus: Math.round(corpus),
+
     requiredCorpus: Math.round(requiredCorpus),
+
     targetMonthlyIncome: Math.round(targetMonthlyIncome),
-    annualIncomeRequired: Math.round(annualIncomeRequired),
+
+    annualIncomeRequired: Math.round(
+      annualIncomeRequired
+    ),
+
     yearlyProjection,
+
     isOnTrack: corpus >= requiredCorpus,
+
+    // Dashboard Intelligence
+
+    yearsLeft: yearsToRetirement,
+
+    fireReadiness: Math.round(fireReadiness),
+
+    surplus: Math.round(surplus),
+
+    monthlyIncomeGap: Math.round(monthlyIncomeGap),
+
+    status,
+
+    recommendations,
   };
 }
