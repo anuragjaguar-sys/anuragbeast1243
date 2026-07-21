@@ -2,13 +2,29 @@ export interface RetirementAssumptions {
   currentAge: number;
   retirementAge: number;
 
-  currentCorpus: number;
-  monthlyInvestment: number;
+  // Assets
+  mutualFunds: number;
+  ppf: number;
+  epf: number;
+  emergencyFund: number;
+  cash: number;
 
-  expectedReturn: number;
+  // Legacy (kept for compatibility)
+  currentCorpus: number;
+
+  // Income
+  monthlySalary: number;
+  monthlyInvestment: number;
+  annualSipIncrease: number;
+  expectedAnnualIncrement: number;
+
+  // Returns
+  equityReturn: number;
+  debtReturn: number;
   inflationRate: number;
   withdrawalRate: number;
 
+  // Retirement
   desiredMonthlyIncome: number;
   monthlyPension: number;
 }
@@ -18,6 +34,11 @@ export interface YearProjection {
   year: number;
 
   corpus: number;
+  mutualFunds: number;
+  ppf: number;
+  epf: number;
+  emergencyFund: number;
+
   targetCorpus: number;
   gap: number;
 }
@@ -34,7 +55,7 @@ export interface RetirementProjection {
 
   isOnTrack: boolean;
 
-  // Retirement Intelligence
+  // Dashboard Intelligence
   yearsLeft: number;
   fireReadiness: number;
   surplus: number;
@@ -47,4 +68,8 @@ export interface RetirementProjection {
     | "Critical";
 
   recommendations: string[];
+
+  // Future expansion
+  retirementAgeReached?: boolean;
+  sustainableUntilAge?: number;
 }
