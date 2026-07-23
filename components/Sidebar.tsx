@@ -4,17 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const navItems = [
+  // Core
   { href: "/", label: "Dashboard", icon: "🏠" },
-  { href: "/monthly-entry", label: "Monthly Entry", icon: "📅" },
-  { href: "/spending-analytics", label: "Spending Analytics", icon: "💳" },
+  { href: "/monthly-entry", label: "Monthly Entry", icon: "📝" },
+  { href: "/profile", label: "Financial Profile", icon: "👤" },
+
+  // Wealth
   { href: "/investments", label: "Investments", icon: "📈" },
   { href: "/home-loan", label: "Home Loan", icon: "🏦" },
   { href: "/goals", label: "Goals", icon: "🎯" },
+  { href: "/spending-analytics", label: "Spending Analytics", icon: "💳" },
+
+  // Intelligence
   { href: "/reports", label: "Reports", icon: "📊" },
   { href: "/ai-cfo", label: "AI CFO", icon: "🤖" },
+
+  // Settings
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
-
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   return pathname.startsWith(href);

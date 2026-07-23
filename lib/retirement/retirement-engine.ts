@@ -1,4 +1,4 @@
-import { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
+import { getRetirementAssumptionsFromProfile } from "@/lib/profile/profile-retirement-adapter";
 import { generateRetirementProjection } from "./projection";
 import { RetirementAssumptions } from "./types";
 
@@ -6,9 +6,9 @@ export function getRetirementProjection(
   overrides?: Partial<RetirementAssumptions>
 ) {
   const assumptions: RetirementAssumptions = {
-    ...DEFAULT_RETIREMENT_ASSUMPTIONS,
-    ...overrides,
-  };
+  ...getRetirementAssumptionsFromProfile(),
+  ...overrides,
+};
 
   return generateRetirementProjection(assumptions);
 }

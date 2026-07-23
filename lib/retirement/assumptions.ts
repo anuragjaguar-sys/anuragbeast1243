@@ -5,24 +5,29 @@ export const DEFAULT_RETIREMENT_ASSUMPTIONS: RetirementAssumptions = {
   currentAge: 37,
   retirementAge: 54,
 
-  // Current Financial Position
-  currentCorpus: 12500000, // ₹1.25 Cr
+  // Assets
+  mutualFunds: 4100000,      // ₹41 lakh
+  ppf: 8400000,              // ₹84 lakh
+  epf: 0,
+  emergencyFund: 0,
+  cash: 0,
 
-  // Monthly Investment
+  // Legacy (kept for compatibility)
+  currentCorpus: 12500000,   // ₹1.25 Cr
+
+  // Income
+  monthlySalary: 160000,
   monthlyInvestment: 100000,
+  annualSipIncrease: 0,
+  expectedAnnualIncrement: 0.05, // 5%
 
-  // Expected Returns
-  expectedReturn: 0.12, // 12%
+  // Returns
+  equityReturn: 0.12,        // 12%
+  debtReturn: 0.071,         // 7.1%
+  inflationRate: 0.06,       // 6%
+  withdrawalRate: 0.04,      // 4%
 
-  // Inflation
-  inflationRate: 0.06, // 6%
-
-  // Safe Withdrawal Rate
-  withdrawalRate: 0.04, // 4%
-
-  // Retirement Lifestyle
+  // Retirement
   desiredMonthlyIncome: 200000,
-
-  // Government Pension
   monthlyPension: 100000,
 };

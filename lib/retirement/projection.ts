@@ -39,17 +39,24 @@ export function generateRetirementProjection(
 
     if (year > 0) {
       corpus =
-        corpus * (1 + assumptions.expectedReturn) +
-        assumptions.monthlyInvestment * 12;
+  corpus * (1 + assumptions.equityReturn) +
+  assumptions.monthlyInvestment * 12;
     }
 
     yearlyProjection.push({
-      age,
-      year,
-      corpus: Math.round(corpus),
-      targetCorpus: Math.round(requiredCorpus),
-      gap: Math.round(requiredCorpus - corpus),
-    });
+  age,
+  year,
+  corpus: Math.round(corpus),
+
+  // Temporary asset breakdown
+  mutualFunds: Math.round(corpus),
+  ppf: 0,
+  epf: 0,
+  emergencyFund: 0,
+
+  targetCorpus: Math.round(requiredCorpus),
+  gap: Math.round(requiredCorpus - corpus),
+});
   }
 
   // ============================
