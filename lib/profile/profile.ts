@@ -8,11 +8,11 @@ export const DEFAULT_FINANCIAL_PROFILE: FinancialProfile = {
   },
 
   income: {
-    monthlySalary: 155000,
-    annualIncrement: 0.05,
-    monthlyPension: 100000,
-  },
-
+  monthlySalary: 150000,
+  monthlyInvestment: 100000, // your current monthly investment
+  annualIncrement: 0.05,
+  monthlyPension: 100000,
+},
   assets: {
     mutualFunds: 4100000,
     ppf: 8400000,
@@ -28,11 +28,14 @@ export const DEFAULT_FINANCIAL_PROFILE: FinancialProfile = {
   },
 
   assumptions: {
-    equityReturn: 0.12,
-    debtReturn: 0.071,
-    inflationRate: 0.06,
-    withdrawalRate: 0.04,
-  },
+  equityReturn: 0.12,
+  debtReturn: 0.071,
+  inflationRate: 0.06,
+  withdrawalRate: 0.04,
+
+  salaryIncrement: 0.05,
+  sipIncrease: 0.05,
+},
 
   goals: {
     desiredMonthlyRetirementIncome: 200000,

@@ -27,7 +27,9 @@ export default function ProfilePage() {
   }
 
   function saveProfile() {
-    updateFinancialProfile(profile);
+    console.log("=== Profile being saved ===");
+console.log(profile);
+console.log(profile.assumptions);updateFinancialProfile(profile);
     alert("✅ Financial Profile Saved Successfully");
   }
 

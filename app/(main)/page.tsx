@@ -13,6 +13,7 @@ import type { MonthlyFinancialStatement } from "@/lib/monthly-review";
 import FinancialDisciplineCard from "@/components/dashboard/FinancialDisciplineCard";
 import RetirementCard from "@/components/dashboard/RetirementCard";
 import RetirementGrowthChart from "@/components/dashboard/RetirementGrowthChart";
+import NetWorthCard from "@/components/dashboard/NetWorthCard";
 function formatTodayDate(): string {
   return new Date().toLocaleDateString("en-IN", {
     weekday: "long",

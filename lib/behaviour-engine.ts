@@ -59,19 +59,35 @@ export type BehaviourGoal = {
  * BehaviourProfile - Raw data stored in localStorage
  * Only raw data is stored. All calculated values are computed dynamically.
  */
+export type TradingEvent = {
+  id: string;
+  tradeDate: string;          // YYYY-MM-DD
+  profitLoss: number;         // negative for loss, positive for profit
+  reason: string;
+  notes?: string;
+  streakBroken: number;       // streak at time of relapse
+  recoveryStarted: string;    // automatically = tradeDate
+};
+
 export type BehaviourProfile = {
-  // Sprint 3A fields
-  recoveryStartDate: string;              // ISO date string (YYYY-MM-DD)
-  lastTradeDate: string;                  // ISO date string (YYYY-MM-DD)
-  longestStreak: number;                  // days (raw data, updated when streak is broken)
-  estimatedMonthlyTradingLoss: number;    // INR (configurable, default ₹30,000)
-  
-  // Sprint 3B fields
+  recoveryStartDate: string;
+
+  // KEEP THIS FOR NOW
+  lastTradeDate: string;
+
+  longestStreak: number;
+
+  estimatedMonthlyTradingLoss: number;
+
+  // NEW
+  tradingHistory: TradingEvent[];
+
   dailyReflections: DailyReflection[];
   monthlyHabits: MonthlyHabitEntry[];
   achievements: BehaviourAchievement[];
   goals: BehaviourGoal[];
 };
+;
 
 // =========================================
 // CALCULATED DATA TYPES
@@ -285,6 +301,7 @@ export function initializeBehaviourProfile(
   const today = new Date().toISOString().split('T')[0];
 
   const profile: BehaviourProfile = {
+    tradingEvents: [],
     recoveryStartDate: recoveryStartDate || today,
     lastTradeDate: lastTradeDate || today,
     longestStreak: 0,

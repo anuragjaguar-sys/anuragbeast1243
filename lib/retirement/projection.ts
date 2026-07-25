@@ -104,7 +104,16 @@ export function generateRetirementProjection(
       "You are on track to achieve your retirement goal."
     );
   }
-
+console.log("=== Retirement Inputs ===");
+console.table({
+  desiredMonthlyIncome: assumptions.desiredMonthlyIncome,
+  inflationRate: assumptions.inflationRate,
+  withdrawalRate: assumptions.withdrawalRate,
+  yearsToRetirement,
+  targetMonthlyIncome,
+  annualIncomeRequired,
+  requiredCorpus,
+});
   return {
     currentCorpus: assumptions.currentCorpus,
 

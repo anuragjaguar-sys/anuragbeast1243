@@ -9,7 +9,18 @@ export function getRetirementAssumptionsFromProfile(): RetirementAssumptions {
     profile.assets.ppf +
     profile.assets.epf +
     profile.assets.nps;
+console.log("=== Financial Profile Values ===");
+console.log({
+  desiredMonthlyRetirementIncome:
+    profile.goals.desiredMonthlyRetirementIncome,
 
+  equityReturn: profile.assumptions.equityReturn,
+  inflationRate: profile.assumptions.inflationRate,
+  withdrawalRate: profile.assumptions.withdrawalRate,
+
+  currentAge: profile.personal.currentAge,
+  retirementAge: profile.personal.retirementAge,
+});
   return {
     currentAge: profile.personal.currentAge,
     retirementAge: profile.personal.retirementAge,
@@ -25,10 +36,14 @@ export function getRetirementAssumptionsFromProfile(): RetirementAssumptions {
     currentCorpus,
 
     // Income
-    monthlySalary: profile.income.monthlySalary,
-    monthlyInvestment: 100000,
-    annualSipIncrease: 0,
-    expectedAnnualIncrement: profile.income.annualIncrement,
+monthlySalary: profile.income.monthlySalary,
+
+// Current monthly investment
+monthlyInvestment: profile.income.monthlyInvestment,
+
+// Growth assumptions
+annualSipIncrease: profile.assumptions.sipIncrease,
+expectedAnnualIncrement: profile.assumptions.salaryIncrement,
 
     // Returns
     equityReturn: profile.assumptions.equityReturn,
