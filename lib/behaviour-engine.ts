@@ -135,7 +135,50 @@ const MILESTONES: Milestone[] = [
 // =========================================
 // CALCULATION FUNCTIONS
 // =========================================
+export interface RecordTradingRelapseInput {
+  tradeDate: string;
+  profitLoss: number;
+  reason: string;
+  notes?: string;
+}export function recordTradingRelapse(
+  profile: BehaviourProfile,
+  input: RecordTradingRelapseInput
+): BehaviourProfile {
 
+  // Calculate streak before breaking it
+  const streakBroken = calculateCurrentStreak(profile.recoveryStartDate);
+
+  // Create history event
+  const event: TradingEvent = {
+    id: crypto.randomUUID(),
+    tradeDate: input.tradeDate,
+    profitLoss: input.profitLoss,
+    reason: input.reason,
+    notes: input.notes,
+    streakBroken,
+    recoveryStarted: input.tradeDate,
+  };
+
+  return {
+    ...profile,
+
+    tradingHistory: [
+      ...profile.tradingHistory,
+      event,
+    ],
+
+    // Keep compatibility with existing code
+    lastTradeDate: input.tradeDate,
+
+    // Start a new recovery
+    recoveryStartDate: input.tradeDate,
+
+    longestStreak: Math.max(
+      profile.longestStreak,
+      streakBroken
+    ),
+  };
+}
 /**
  * Calculate current streak in days
  * Based on lastTradeDate
@@ -301,7 +344,7 @@ export function initializeBehaviourProfile(
   const today = new Date().toISOString().split('T')[0];
 
   const profile: BehaviourProfile = {
-    tradingEvents: [],
+    tradingHistory: [],
     recoveryStartDate: recoveryStartDate || today,
     lastTradeDate: lastTradeDate || today,
     longestStreak: 0,
@@ -537,7 +580,37 @@ export function checkAchievements(profile: BehaviourProfile): BehaviourProfile {
   
   return updatedProfile;
 }
+export function getLastRelapse(
+  profile: BehaviourProfile
+): TradingEvent | null {
+  if (profile.tradingHistory.length === 0) {
+    return null;
+  }
 
+  return profile.tradingHistory[profile.tradingHistory.length - 1];
+}
+export function getRecoveryHistory(
+  profile: BehaviourProfile
+): TradingEvent[] {
+  return [...profile.tradingHistory].reverse();
+}
+export function getRecoverySummary(
+  profile: BehaviourProfile
+) {
+  return {
+    currentStreak: calculateCurrentStreak(
+      profile.recoveryStartDate
+    ),
+
+    longestStreak: profile.longestStreak,
+
+    recoveryStartDate: profile.recoveryStartDate,
+
+    relapseCount: profile.tradingHistory.length,
+
+    lastRelapse: getLastRelapse(profile),
+  };
+}
 // =========================================
 // GOAL FUNCTIONS
 // =========================================
