@@ -21,6 +21,7 @@ import FinancialDisciplineCard from "@/components/dashboard/FinancialDisciplineC
 import RetirementCard from "@/components/dashboard/RetirementCard";
 import RetirementGrowthChart from "@/components/dashboard/RetirementGrowthChart";
 import NetWorthCard from "@/components/dashboard/NetWorthCard";
+import AthenaCFOCard from "@/components/dashboard/AthenaCFOCard";
 function formatTodayDate(): string {
   return new Date().toLocaleDateString("en-IN", {
     weekday: "long",
@@ -383,10 +384,11 @@ if (financialMetrics) {
           <FinancialDisciplineCard />
         </section>
 
-        <section className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <section className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-4">
           <FinancialHealthCard />
           <InvestmentPortfolioCard />
           <RetirementIntelligenceCard />
+          <AthenaCFOCard />
         </section>
 
         {/* Performance KPIs */}
