@@ -6,9 +6,16 @@ import {
   formatINR,
   getFinancialMetrics,
   getPortfolioAllocation,
-  getGoalsProgress,
   getAICFOInsights,
 } from "@/lib/financial-engine";
+import { getPortfolio } from "@/lib/investments";
+import InvestmentPortfolioCard from "@/components/dashboard/InvestmentPortfolioCard";
+import RetirementIntelligenceCard from "@/components/dashboard/RetirementIntelligenceCard";
+import FinancialHealthCard from "@/components/dashboard/FinancialHealthCard";
+
+import {
+  getGoals,
+} from "@/lib/goals";
 import type { MonthlyFinancialStatement } from "@/lib/monthly-review";
 import FinancialDisciplineCard from "@/components/dashboard/FinancialDisciplineCard";
 import RetirementCard from "@/components/dashboard/RetirementCard";
@@ -67,44 +74,116 @@ export default function Home() {
   const today = formatTodayDate();
   const [metrics, setMetrics] = useState<ReturnType<typeof getFinancialMetrics> | null>(null);
   const [portfolioItems, setPortfolioItems] = useState<ReturnType<typeof getPortfolioAllocation>>([]);
-  const [goals, setGoals] = useState<ReturnType<typeof getGoalsProgress>>([]);
+  const [goals, setGoals] =
+useState<ReturnType<typeof getGoals>>([]);
   const [aicfoInsights, setAicfoInsights] = useState<ReturnType<typeof getAICFOInsights> | null>(null);
   const [hasData, setHasData] = useState(false);
 
-  useEffect(() => {
-    // Run one-time migration on app load
-    migrateToNewFormat();
+useEffect(() => {
+  // Run one-time migration on app load
+  migrateToNewFormat();
 
-    const loadData = () => {
-      const review = loadMonthlyReview();
+  const loadData = () => {
+    const review = loadMonthlyReview();
+
+    // Financial metrics now come from:
+    // Profile baseline + financial engine
+    const financialMetrics = getFinancialMetrics();
+
+
+if (financialMetrics) {
+      setMetrics(financialMetrics);
+
+      // Use canonical portfolio as the source of truth for dashboard allocation
+      const canonicalPortfolio = getPortfolio();
+
+      // Map PortfolioItem[] -> PortfolioAllocation[] shape expected by the dashboard
+      const mapped = canonicalPortfolio.map((p) => {
+        const isLiability = p.type === "Liability";
+        // assetClass exists only on assets
+        const assetClass = !isLiability && (p as any).assetClass ? (p as any).assetClass : undefined;
+        return {
+          name: p.name,
+          amount: (p.currentValue as number) || 0,
+          value: (p.currentValue as number) || 0,
+          color:
+            assetClass === "Equity"
+              ? "bg-blue-500"
+              : assetClass === "Debt"
+              ? "bg-emerald-500"
+              : assetClass === "Cash"
+              ? "bg-amber-500"
+              : assetClass === "Alternative"
+              ? "bg-indigo-500"
+              : isLiability
+              ? "bg-rose-500"
+              : "bg-zinc-500",
+          liability: isLiability,
+        };
+      });
+
+      setPortfolioItems(mapped);
+
+      // AI CFO still needs a monthly statement for some insights
       if (review) {
-        const financialMetrics = getFinancialMetrics();
-        if (financialMetrics) {
-          setMetrics(financialMetrics);
-          setPortfolioItems(getPortfolioAllocation(review));
-          setGoals(getGoalsProgress(review));
-          setAicfoInsights(getAICFOInsights(review));
-          setHasData(true);
-        } else {
-          setHasData(false);
-        }
+        setAicfoInsights(getAICFOInsights(review));
       } else {
-        setHasData(false);
+        setAicfoInsights(null);
       }
-    };
 
+      // Goals come from Goal Engine
+      setGoals(getGoals());
+
+      setHasData(true);
+    } else {
+      setMetrics(null);
+      setPortfolioItems([]);
+      setAicfoInsights(null);
+      setGoals([]);
+      setHasData(false);
+    }
+  };
+
+  // Initial load
+  loadData();
+
+  // Refresh when Profile or Monthly Entry changes
+  const handleStorageChange = (e: StorageEvent) => {
+    if (
+      e.key === "fire54_monthly_reviews" ||
+      e.key === "fire54-financial-profile"
+    ) {
+      loadData();
+    }
+  };
+
+  // Refresh when returning to the Dashboard
+  const handleFocus = () => {
     loadData();
+  };
 
-    // Listen for localStorage changes (from other tabs/components)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "fire54_monthly_reviews") {
-        loadData();
-      }
-    };
+  window.addEventListener(
+    "storage",
+    handleStorageChange
+  );
 
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
+  window.addEventListener(
+    "focus",
+    handleFocus
+  );
+
+  return () => {
+    window.removeEventListener(
+      "storage",
+      handleStorageChange
+    );
+
+    window.removeEventListener(
+      "focus",
+      handleFocus
+    );
+  };
+}, []);
 
   const kpiCards = metrics
     ? [
@@ -273,30 +352,40 @@ export default function Home() {
         {/* KPI Cards */}
         <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {kpiCards.map((card) => (
-            <div
-              key={card.label}
-              className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${accentRing[card.accent]} border-zinc-800/60 p-5 transition-all duration-300 hover:border-zinc-700/80 hover:shadow-lg hover:shadow-black/20`}
-            >
-              <div className="absolute inset-0 bg-zinc-900/60" />
-              <div className="relative">
-                <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-                  {card.label}
-                </p>
-                <div className="mt-2 flex items-center gap-2">
-                  <p className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-                    {card.value}
+            card.label === "Net Worth" ? (
+              <NetWorthCard key={card.label} />
+            ) : (
+              <div
+                key={card.label}
+                className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${accentRing[card.accent]} border-zinc-800/60 p-5 transition-all duration-300 hover:border-zinc-700/80 hover:shadow-lg hover:shadow-black/20`}
+              >
+                <div className="absolute inset-0 bg-zinc-900/60" />
+                <div className="relative">
+                  <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+                    {card.label}
                   </p>
-                  {card.trend === "up" && (
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/20">
-                      <UpArrow />
-                    </span>
-                  )}
+                  <div className="mt-2 flex items-center gap-2">
+                    <p className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+                      {card.value}
+                    </p>
+                    {card.trend === "up" && (
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                        <UpArrow />
+                      </span>
+                    )}
+                  </div>
+                  <p className={`mt-2 text-xs ${accentText[card.accent]}`}>{card.subtext}</p>
                 </div>
-                <p className={`mt-2 text-xs ${accentText[card.accent]}`}>{card.subtext}</p>
               </div>
-            </div>
+            )
           ))}
           <FinancialDisciplineCard />
+        </section>
+
+        <section className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <FinancialHealthCard />
+          <InvestmentPortfolioCard />
+          <RetirementIntelligenceCard />
         </section>
 
         {/* Performance KPIs */}
@@ -331,11 +420,11 @@ export default function Home() {
 </section>
         {/* Two-column layout */}
         <section className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Portfolio Allocation */}
+          {/*  Allocation */}
           <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 backdrop-blur-sm">
             <div className="mb-6 flex items-center justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-white">Portfolio Allocation</h2>
+                <h2 className="text-lg font-semibold text-white"> Allocation</h2>
                 <p className="mt-0.5 font-mono text-[11px] text-zinc-500 uppercase tracking-wider">
                   Asset breakdown
                 </p>
@@ -398,37 +487,57 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="space-y-6">
-              {goals.map((goal) => (
-                <div key={goal.name}>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-sm font-medium text-zinc-200">{goal.name}</span>
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-xs text-zinc-500">{goal.current}</span>
-                      <span
-                        className={`font-mono text-sm font-semibold ${
-                          goal.progress === 100 ? "text-emerald-400" : "text-white"
-                        }`}
-                      >
-                        {goal.progress}%
-                      </span>
-                    </div>
+            {goals.map((goal) => (
+              <div key={goal.id} className="space-y-2">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-sm font-medium text-zinc-200">
+                    {goal.title}
+                  </span>
+
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono text-xs text-zinc-500">
+                      {formatINR(goal.currentAmount)}
+                    </span>
+
+                    <span
+                      className={`font-mono text-sm font-semibold ${
+                        goal.progress === 100
+                          ? "text-emerald-400"
+                          : "text-white"
+                      }`}
+                    >
+                      {goal.progress}%
+                    </span>
                   </div>
-                  <div className="relative h-2.5 overflow-hidden rounded-full bg-zinc-800/80">
-                    <div
-                      className={`absolute inset-y-0 left-0 rounded-full ${goal.color} transition-all duration-700`}
-                      style={{ width: `${goal.progress}%` }}
-                    />
-                    {goal.progress === 100 && (
-                      <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
-                    )}
-                  </div>
-                  <p className="mt-1 font-mono text-[10px] text-zinc-600">
-                    Target: {goal.target}
-                  </p>
                 </div>
-              ))}
-            </div>
+
+                <div className="relative h-2.5 overflow-hidden rounded-full bg-zinc-800/80">
+                  <div
+                    className={`absolute inset-y-0 left-0 rounded-full transition-all duration-700 ${
+                      goal.status === "Completed"
+                        ? "bg-emerald-500"
+                        : goal.status === "On Track"
+                        ? "bg-blue-500"
+                        : "bg-amber-500"
+                    }`}
+                    style={{
+                      width: `${Math.min(
+                        Math.max(goal.progress || 0, 0),
+                        100
+                      )}%`,
+                    }}
+                  />
+
+                  {goal.progress === 100 && (
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+                  )}
+                </div>
+
+                <p className="mt-1 font-mono text-[10px] text-zinc-600">
+                  Target: {formatINR(goal.targetAmount)}
+                </p>
+              </div>
+            ))}
           </div>
         </section>
 
