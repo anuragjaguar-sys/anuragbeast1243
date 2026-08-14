@@ -8,7 +8,7 @@ import {
   getPortfolioAllocation,
   getAICFOInsights,
 } from "@/lib/financial-engine";
-import { getPortfolio } from "@/lib/investments";
+import { getPortfolio, runPortfolioMigration } from "@/lib/investments";
 import InvestmentPortfolioCard from "@/components/dashboard/InvestmentPortfolioCard";
 import RetirementIntelligenceCard from "@/components/dashboard/RetirementIntelligenceCard";
 import FinancialHealthCard from "@/components/dashboard/FinancialHealthCard";
@@ -82,8 +82,9 @@ useState<ReturnType<typeof getGoals>>([]);
 useEffect(() => {
   // Run one-time migration on app load
   migrateToNewFormat();
+runPortfolioMigration();
 
-  const loadData = () => {
+const loadData = () => {
     const review = loadMonthlyReview();
 
     // Financial metrics now come from:
