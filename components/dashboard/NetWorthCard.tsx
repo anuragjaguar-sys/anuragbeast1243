@@ -1,9 +1,15 @@
 "use client";
 
+import { useState } from "react";
+import { getAssets, getLiabilities, getPortfolio } from "@/lib/investments";
 import { getWealthMetrics } from "@/lib/wealth/wealth-engine";
 
 export default function NetWorthCard() {
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const metrics = getWealthMetrics();
+  const portfolio = getPortfolio();
+  const assets = getAssets(portfolio);
+  const liabilities = getLiabilities(portfolio);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-IN", {
@@ -66,7 +72,85 @@ export default function NetWorthCard() {
             />
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowBreakdown((visible) => !visible)}
+          className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-emerald-400 hover:text-white"
+          aria-expanded={showBreakdown}
+        >
+          {showBreakdown ? "Hide breakdown" : "View net worth breakdown"}
+        </button>
+
+        {showBreakdown && (
+          <div className="space-y-5 rounded-xl border border-slate-700 bg-slate-950/50 p-4">
+            <BreakdownSection
+              title="Assets"
+              items={assets.map((asset) => ({
+                id: asset.id,
+                name: asset.name,
+                value: asset.currentValue,
+              }))}
+              total={metrics.totalAssets}
+              formatCurrency={formatCurrency}
+              emptyMessage="No assets have been added to Portfolio yet."
+            />
+
+            <BreakdownSection
+              title="Liabilities"
+              items={liabilities.map((liability) => ({
+                id: liability.id,
+                name: liability.name,
+                value: liability.outstandingAmount,
+              }))}
+              total={metrics.totalLiabilities}
+              formatCurrency={formatCurrency}
+              emptyMessage="No liabilities have been added to Portfolio."
+            />
+
+            <div className="flex justify-between border-t border-slate-700 pt-3 font-semibold text-white">
+              <span>Assets − Liabilities</span>
+              <span>{formatCurrency(metrics.netWorth)}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function BreakdownSection({
+  title,
+  items,
+  total,
+  formatCurrency,
+  emptyMessage,
+}: {
+  title: string;
+  items: { id: string; name: string; value: number }[];
+  total: number;
+  formatCurrency: (value: number) => string;
+  emptyMessage: string;
+}) {
+  return (
+    <section>
+      <div className="mb-2 flex justify-between text-sm font-semibold text-white">
+        <span>{title}</span>
+        <span>{formatCurrency(total)}</span>
+      </div>
+
+      {items.length === 0 ? (
+        <p className="text-sm text-slate-400">{emptyMessage}</p>
+      ) : (
+        <ul className="space-y-2 text-sm text-slate-300">
+          {items.map((item) => (
+            <li key={item.id} className="flex justify-between gap-4">
+              <span>{item.name}</span>
+              <span className="shrink-0">{formatCurrency(item.value)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

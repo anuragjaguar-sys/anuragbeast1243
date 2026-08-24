@@ -9,6 +9,7 @@ export const DEFAULT_RETIREMENT_ASSUMPTIONS: RetirementAssumptions = {
   mutualFunds: 4100000,      // ₹41 lakh
   ppf: 8400000,              // ₹84 lakh
   epf: 0,
+  nps: 0,
   emergencyFund: 0,
   cash: 0,
 

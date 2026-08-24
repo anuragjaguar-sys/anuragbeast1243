@@ -1,13 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   getFinancialProfile,
+  hasFinancialProfile,
   updateFinancialProfile,
 } from "@/lib/profile/profile-engine";
 import { FinancialProfile } from "@/lib/profile/profile.types";
+import { initializePortfolioFromProfile } from "@/lib/investments";
 
 export default function ProfilePage() {
+  const [isPortfolioInitialized, setIsPortfolioInitialized] = useState(
+    hasFinancialProfile
+  );
   const [profile, setProfile] = useState<FinancialProfile>(
     getFinancialProfile()
   );
@@ -27,9 +33,15 @@ export default function ProfilePage() {
   }
 
   function saveProfile() {
-    console.log("=== Profile being saved ===");
-console.log(profile);
-console.log(profile.assumptions);updateFinancialProfile(profile);
+    const isFirstSave = !isPortfolioInitialized;
+
+    updateFinancialProfile(profile);
+
+    if (isFirstSave) {
+      initializePortfolioFromProfile();
+      setIsPortfolioInitialized(true);
+    }
+
     alert("✅ Financial Profile Saved Successfully");
   }
 
@@ -108,6 +120,8 @@ console.log(profile.assumptions);updateFinancialProfile(profile);
             }
           />
         </div>
+        {!isPortfolioInitialized ? (
+          <>
                 {/* ===================== */}
         {/* ASSETS */}
         {/* ===================== */}
@@ -164,6 +178,38 @@ console.log(profile.assumptions);updateFinancialProfile(profile);
               updateNumber("assets", "cash", v)
             }
           />
+
+          <Input
+            label="Stocks (₹)"
+            value={profile.assets.stocks}
+            onChange={(v) =>
+              updateNumber("assets", "stocks", v)
+            }
+          />
+
+          <Input
+            label="Fixed Deposits (₹)"
+            value={profile.assets.fd}
+            onChange={(v) =>
+              updateNumber("assets", "fd", v)
+            }
+          />
+
+          <Input
+            label="Gold (₹)"
+            value={profile.assets.gold}
+            onChange={(v) =>
+              updateNumber("assets", "gold", v)
+            }
+          />
+
+          <Input
+            label="Property (₹)"
+            value={profile.assets.property}
+            onChange={(v) =>
+              updateNumber("assets", "property", v)
+            }
+          />
         </div>
 
         {/* ===================== */}
@@ -199,6 +245,10 @@ console.log(profile.assumptions);updateFinancialProfile(profile);
             }
           />
         </div>
+          </>
+        ) : (
+          <PortfolioManagedCard />
+        )}
                 {/* ===================== */}
         {/* ASSUMPTIONS */}
         {/* ===================== */}
@@ -237,6 +287,14 @@ console.log(profile.assumptions);updateFinancialProfile(profile);
             value={profile.assumptions.withdrawalRate}
             onChange={(v) =>
               updateNumber("assumptions", "withdrawalRate", v)
+            }
+          />
+
+          <Input
+            label="Annual SIP Increase (%)"
+            value={profile.assumptions.sipIncrease}
+            onChange={(v) =>
+              updateNumber("assumptions", "sipIncrease", v)
             }
           />
         </div>
@@ -322,6 +380,26 @@ function Input({
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-white outline-none focus:border-emerald-500"
       />
+    </div>
+  );
+}
+
+function PortfolioManagedCard() {
+  return (
+    <div className="rounded-2xl border border-blue-500/40 bg-zinc-900 p-6">
+      <h2 className="mb-3 text-xl font-semibold text-white">
+        💼 Assets & Liabilities
+      </h2>
+      <p className="mb-5 text-sm text-zinc-400">
+        Portfolio is the single source of truth for your assets and
+        liabilities. Manage those values there.
+      </p>
+      <Link
+        href="/portfolio"
+        className="inline-flex rounded-xl bg-blue-500 px-4 py-2 font-semibold text-white transition hover:bg-blue-400"
+      >
+        Open Portfolio
+      </Link>
     </div>
   );
 }

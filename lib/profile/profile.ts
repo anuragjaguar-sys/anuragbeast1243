@@ -20,6 +20,10 @@ export const DEFAULT_FINANCIAL_PROFILE: FinancialProfile = {
     nps: 0,
     emergencyFund: 0,
     cash: 0,
+    stocks: 0,
+    fd: 0,
+    gold: 0,
+    property: 0,
   },
 
   liabilities: {

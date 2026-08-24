@@ -1,32 +1,26 @@
-import { getFinancialProfile } from "@/lib/profile/profile-engine";
+import { getAssets, getPortfolio, getPortfolioSummary } from "@/lib/investments";
 import { WealthMetrics } from "./wealth-types";
 
 export function getWealthMetrics(): WealthMetrics {
-  const profile = getFinancialProfile();
+  const portfolio = getPortfolio();
+  const summary = getPortfolioSummary(portfolio);
+  const assets = getAssets(portfolio);
 
-  const totalAssets =
-    profile.assets.mutualFunds +
-    profile.assets.ppf +
-    profile.assets.epf +
-    profile.assets.nps +
-    profile.assets.emergencyFund +
-    profile.assets.cash;
+  const totalAssets = summary.totalAssets;
+  const totalLiabilities = summary.totalLiabilities;
+  const netWorth = summary.netWorth;
 
-  const totalLiabilities =
-    profile.liabilities.homeLoanOutstanding +
-    profile.liabilities.otherLoans;
+  const investedAssets = assets
+    .filter((asset) =>
+      ["Mutual Fund", "PPF", "EPF", "NPS"].includes(asset.category)
+    )
+    .reduce((sum, asset) => sum + asset.currentValue, 0);
 
-  const netWorth = totalAssets - totalLiabilities;
-
-  const investedAssets =
-    profile.assets.mutualFunds +
-    profile.assets.ppf +
-    profile.assets.epf +
-    profile.assets.nps;
-
-  const liquidAssets =
-    profile.assets.emergencyFund +
-    profile.assets.cash;
+  const liquidAssets = assets
+    .filter((asset) =>
+      ["Emergency Fund", "Savings Account", "Cash"].includes(asset.category)
+    )
+    .reduce((sum, asset) => sum + asset.currentValue, 0);
 
   const investmentRatio =
     totalAssets > 0 ? investedAssets / totalAssets : 0;

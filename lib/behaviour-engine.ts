@@ -59,15 +59,19 @@ export type BehaviourGoal = {
  * BehaviourProfile - Raw data stored in localStorage
  * Only raw data is stored. All calculated values are computed dynamically.
  */
-export type TradingEvent = {
+export interface TradingEvent {
   id: string;
-  tradeDate: string;          // YYYY-MM-DD
-  profitLoss: number;         // negative for loss, positive for profit
-  reason: string;
+
+  tradeDate: string;
+
+  loss: number;
+
+  trigger: string;
+
   notes?: string;
-  streakBroken: number;       // streak at time of relapse
-  recoveryStarted: string;    // automatically = tradeDate
-};
+
+  streakBroken: number;
+}
 
 export type BehaviourProfile = {
   recoveryStartDate: string;
@@ -87,7 +91,7 @@ export type BehaviourProfile = {
   achievements: BehaviourAchievement[];
   goals: BehaviourGoal[];
 };
-;
+
 
 // =========================================
 // CALCULATED DATA TYPES
@@ -152,20 +156,19 @@ export interface RecordTradingRelapseInput {
   const event: TradingEvent = {
     id: crypto.randomUUID(),
     tradeDate: input.tradeDate,
-    profitLoss: input.profitLoss,
-    reason: input.reason,
+    loss: input.profitLoss,
+    trigger: input.reason,
     notes: input.notes,
     streakBroken,
-    recoveryStarted: input.tradeDate,
   };
 
   return {
     ...profile,
 
     tradingHistory: [
-      ...profile.tradingHistory,
-      event,
-    ],
+  ...(profile.tradingHistory ?? []),
+  event,
+],
 
     // Keep compatibility with existing code
     lastTradeDate: input.tradeDate,
@@ -597,16 +600,30 @@ export function getRecoveryHistory(
 export function getRecoverySummary(
   profile: BehaviourProfile
 ) {
+  const currentStreak = calculateCurrentStreak(
+    profile.recoveryStartDate
+  );
+
+  const relapseCount = profile.tradingHistory.length;
+
+  const totalLoss = profile.tradingHistory.reduce(
+    (sum, trade) => sum + trade.loss,
+    0
+  );
+
+  const averageLoss =
+    relapseCount > 0
+      ? totalLoss / relapseCount
+      : 0;
+
   return {
-    currentStreak: calculateCurrentStreak(
-      profile.recoveryStartDate
-    ),
-
+    currentStreak,
     longestStreak: profile.longestStreak,
-
     recoveryStartDate: profile.recoveryStartDate,
 
-    relapseCount: profile.tradingHistory.length,
+    relapseCount,
+    totalLoss,
+    averageLoss,
 
     lastRelapse: getLastRelapse(profile),
   };
@@ -642,4 +659,57 @@ export function updateGoalProgress(goalId: string, current: number): BehaviourPr
   if (!goal) return profile;
   
   return setGoal({ ...goal, current });
+}
+// =========================================
+// RECOVERY INSIGHTS
+// =========================================
+
+export function getRecoveryInsights(profile: BehaviourProfile) {
+  const history = profile.tradingHistory;
+
+  if (history.length === 0) {
+    return {
+      totalLoss: 0,
+      largestLoss: 0,
+      averageLoss: 0,
+      mostCommonTrigger: "None",
+      totalRelapses: 0,
+      estimatedWealthLost: 0,
+    };
+  }
+
+  const totalLoss = history.reduce(
+    (sum, trade) => sum + trade.loss,
+    0
+  );
+
+  const largestLoss = Math.max(
+    ...history.map((trade) => trade.loss)
+  );
+
+  const averageLoss = totalLoss / history.length;
+
+  // Count triggers
+  const triggerCounts: Record<string, number> = {};
+
+  history.forEach((trade) => {
+    triggerCounts[trade.trigger] =
+      (triggerCounts[trade.trigger] || 0) + 1;
+  });
+
+  const mostCommonTrigger = Object.entries(triggerCounts).sort(
+    (a, b) => b[1] - a[1]
+  )[0][0];
+
+  // Assume 12% annual return over 20 years
+  const estimatedWealthLost = totalLoss * Math.pow(1.12, 20);
+
+  return {
+    totalLoss,
+    largestLoss,
+    averageLoss,
+    mostCommonTrigger,
+    totalRelapses: history.length,
+    estimatedWealthLost,
+  };
 }

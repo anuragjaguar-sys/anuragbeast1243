@@ -3,6 +3,14 @@ import { DEFAULT_FINANCIAL_PROFILE } from "./profile";
 
 const PROFILE_STORAGE_KEY = "fire54-financial-profile";
 
+export function hasSavedFinancialProfile(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return localStorage.getItem(PROFILE_STORAGE_KEY) !== null;
+}
+
 export function loadFinancialProfile(): FinancialProfile {
   if (typeof window === "undefined") {
     return DEFAULT_FINANCIAL_PROFILE;

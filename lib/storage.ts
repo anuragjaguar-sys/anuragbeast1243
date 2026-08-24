@@ -64,6 +64,7 @@ function migrateLegacyData(
       cashRemaining: "",
     },
     investments: [],
+    goalContributions: [],
     expenses: {
       household: {
         groceries: "",
@@ -220,10 +221,24 @@ function writeStore(store: MonthlyReviewsStore): void {
 export function loadMonthlyReview(
   monthKey: string = getMonthKey()
 ): MonthlyFinancialStatement | null {
+
   const store = readStore();
-  const entry = store[monthKey];
-  if (!entry) return null;
-  return entry.data as MonthlyFinancialStatement;
+
+  // Current month exists
+  if (store[monthKey]) {
+    return store[monthKey].data;
+  }
+
+  // Fallback to latest available statement
+  const reviews = Object.values(store).sort(
+    (a, b) => b.monthKey.localeCompare(a.monthKey)
+  );
+
+  if (reviews.length === 0) {
+    return null;
+  }
+
+  return reviews[0].data;
 }
 
 /**
@@ -272,4 +287,3 @@ export function clearAllMonthlyReviews(): void {
   if (!isBrowser()) return;
   localStorage.removeItem(STORAGE_KEY);
 }
-

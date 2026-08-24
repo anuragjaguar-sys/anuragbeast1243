@@ -25,6 +25,12 @@ export interface AssetProfile {
   nps: number;
   emergencyFund: number;
   cash: number;
+
+  // Initial assets held before ATHENA was started
+  stocks: number;
+  fd: number;
+  gold: number;
+  property: number;
 }
 
 export interface LiabilityProfile {

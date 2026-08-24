@@ -22,6 +22,9 @@ import RetirementCard from "@/components/dashboard/RetirementCard";
 import RetirementGrowthChart from "@/components/dashboard/RetirementGrowthChart";
 import NetWorthCard from "@/components/dashboard/NetWorthCard";
 import AthenaCFOCard from "@/components/dashboard/AthenaCFOCard";
+import AthenaActionCard from "@/components/dashboard/AthenaActionCard";
+import AthenaMonthlyReviewCard from "@/components/dashboard/AthenaMonthlyReviewCard";
+import AthenaCommandCenter from "@/components/dashboard/AthenaCommandCenter";
 function formatTodayDate(): string {
   return new Date().toLocaleDateString("en-IN", {
     weekday: "long",
@@ -68,6 +71,23 @@ function SparkIcon() {
         d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
       />
     </svg>
+  );
+}
+
+function DashboardSectionHeading({
+  question,
+  title,
+}: {
+  question: string;
+  title: string;
+}) {
+  return (
+    <div className="mb-4">
+      <p className="font-mono text-[10px] tracking-[0.22em] text-emerald-500/80 uppercase">
+        {question}
+      </p>
+      <h2 className="mt-1 text-xl font-semibold text-white">{title}</h2>
+    </div>
   );
 }
 
@@ -351,9 +371,12 @@ if (financialMetrics) {
           </div>
         </header>
 
-        {/* KPI Cards */}
-        <section className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {kpiCards.map((card) => (
+
+
+        <section className="mb-8">
+          <DashboardSectionHeading question="Where am I?" title="Current Financial Position" />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {kpiCards.map((card) => (
             card.label === "Net Worth" ? (
               <NetWorthCard key={card.label} />
             ) : (
@@ -380,109 +403,27 @@ if (financialMetrics) {
                 </div>
               </div>
             )
-          ))}
+            ))}
+          </div>
+        </section>
+
+        <section className="mb-8">
+          <DashboardSectionHeading question="Where am I going?" title="Retirement" />
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <RetirementCard />
+            <RetirementGrowthChart />
+          </div>
+        </section>
+
+        <section className="mb-8">
+          <DashboardSectionHeading question="Am I protecting it?" title="Financial Discipline" />
           <FinancialDisciplineCard />
         </section>
 
-        <section className="mb-8 grid grid-cols-1 gap-4 lg:grid-cols-4">
-          <FinancialHealthCard />
-          <InvestmentPortfolioCard />
-          <RetirementIntelligenceCard />
-          <AthenaCFOCard />
-        </section>
-
-        {/* Performance KPIs */}
-        {performanceKPIs.length > 0 && (
-          <section className="mb-8 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 backdrop-blur-sm">
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-white">Performance Metrics</h2>
-              <p className="mt-0.5 font-mono text-[11px] text-zinc-500 uppercase tracking-wider">
-                Financial health indicators
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-              {performanceKPIs.map((kpi) => (
-                <div key={kpi.label} className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
-                  <p className="font-mono text-[10px] tracking-wider text-zinc-500 uppercase">
-                    {kpi.label}
-                  </p>
-                  <p className={`mt-2 text-lg font-semibold ${accentText[kpi.accent]}`}>
-                    {kpi.value}
-                  </p>
-                  <p className="mt-1 text-[10px] text-zinc-600">{kpi.subtext}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
-{/* Retirement Intelligence */}
-
-<section className="mb-8 grid grid-cols-1 gap-6 xl:grid-cols-2">
-  <RetirementCard />
-  <RetirementGrowthChart />
-</section>
-        {/* Two-column layout */}
-        <section className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/*  Allocation */}
-          <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 backdrop-blur-sm">
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-white"> Allocation</h2>
-                <p className="mt-0.5 font-mono text-[11px] text-zinc-500 uppercase tracking-wider">
-                  Asset breakdown
-                </p>
-              </div>
-              <span className="rounded-lg bg-zinc-800/80 px-2.5 py-1 font-mono text-xs text-zinc-400">
-                {portfolioItems.length} holdings
-              </span>
-            </div>
-
-            <div className="space-y-4">
-              {portfolioItems.map((item) => (
-                <div key={item.name}>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span className={`h-2 w-2 rounded-full ${item.color}`} />
-                      <span className="text-sm text-zinc-300">{item.name}</span>
-                      {item.liability && (
-                        <span className="rounded px-1.5 py-0.5 font-mono text-[9px] tracking-wide text-rose-400 uppercase bg-rose-500/10 ring-1 ring-rose-500/20">
-                          Liability
-                        </span>
-                      )}
-                    </div>
-                    <span className="font-mono text-sm font-medium text-white">{formatINR(item.amount)}</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80">
-                    <div
-                      className={`h-full rounded-full ${item.color} opacity-80 transition-all duration-700`}
-                      style={{ width: `${(item.value / maxPortfolio) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Stacked bar summary */}
-            <div className="mt-6 flex h-3 overflow-hidden rounded-full">
-              {portfolioItems
-                .filter((i) => !i.liability)
-                .map((item) => (
-                  <div
-                    key={item.name}
-                    className={`${item.color} opacity-70`}
-                    style={{
-                      width: `${(item.value / portfolioItems.filter((i) => !i.liability).reduce((s, i) => s + i.value, 0)) * 100}%`,
-                    }}
-                  />
-                ))}
-            </div>
-            <p className="mt-2 font-mono text-[10px] text-zinc-600">
-              Net assets excluding liabilities · {formatINR(portfolioItems.filter((i) => !i.liability).reduce((s, i) => s + i.amount, 0))} total allocation
-            </p>
-          </div>
-
-          {/* Goals */}
-          <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 backdrop-blur-sm">
+        <section className="mb-8">
+          <DashboardSectionHeading question="What am I building?" title="Goals & Monthly Review" />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 backdrop-blur-sm">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-white">Goals</h2>
               <p className="mt-0.5 font-mono text-[11px] text-zinc-500 uppercase tracking-wider">
@@ -541,11 +482,59 @@ if (financialMetrics) {
                 </p>
               </div>
             ))}
+            </div>
+            <AthenaMonthlyReviewCard />
           </div>
         </section>
 
-        {/* AI CFO Card */}
-        <section>
+        <section className="mb-8">
+          <DashboardSectionHeading question="Is it healthy?" title="Financial Health & Intelligence" />
+          <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-5">
+            <FinancialHealthCard />
+            <InvestmentPortfolioCard />
+            <RetirementIntelligenceCard />
+            <AthenaCFOCard />
+            <AthenaActionCard />
+          </div>
+          <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 backdrop-blur-sm">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">Portfolio Allocation</h3>
+                <p className="mt-0.5 font-mono text-[11px] text-zinc-500 uppercase tracking-wider">Asset breakdown</p>
+              </div>
+              <span className="rounded-lg bg-zinc-800/80 px-2.5 py-1 font-mono text-xs text-zinc-400">{portfolioItems.length} holdings</span>
+            </div>
+            <div className="space-y-4">
+              {portfolioItems.map((item) => (
+                <div key={item.name}>
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`h-2 w-2 rounded-full ${item.color}`} />
+                      <span className="text-sm text-zinc-300">{item.name}</span>
+                      {item.liability && <span className="rounded bg-rose-500/10 px-1.5 py-0.5 font-mono text-[9px] tracking-wide text-rose-400 uppercase ring-1 ring-rose-500/20">Liability</span>}
+                    </div>
+                    <span className="font-mono text-sm font-medium text-white">{formatINR(item.amount)}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-zinc-800/80"><div className={`h-full rounded-full ${item.color} opacity-80 transition-all duration-700`} style={{ width: `${(item.value / maxPortfolio) * 100}%` }} /></div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-6 flex h-3 overflow-hidden rounded-full">
+              {portfolioItems.filter((i) => !i.liability).map((item) => (
+                <div key={item.name} className={`${item.color} opacity-70`} style={{ width: `${(item.value / portfolioItems.filter((i) => !i.liability).reduce((sum, item) => sum + item.value, 0)) * 100}%` }} />
+              ))}
+            </div>
+            <p className="mt-2 font-mono text-[10px] text-zinc-600">Net assets excluding liabilities · {formatINR(portfolioItems.filter((i) => !i.liability).reduce((sum, item) => sum + item.amount, 0))} total allocation</p>
+          </div>
+        </section>
+
+        <section className="mb-8">
+          <DashboardSectionHeading question="What should I do now?" title="Athena Command Center" />
+          <AthenaCommandCenter />
+        </section>
+
+        <section className="mb-8">
+          <DashboardSectionHeading question="AI CFO" title="Your Financial Advisory" />
           <div className="relative overflow-hidden rounded-2xl border border-zinc-800/60 bg-gradient-to-br from-zinc-900/80 via-zinc-900/60 to-emerald-950/20 p-6 sm:p-8 backdrop-blur-sm">
             {/* Decorative grid */}
             <div
@@ -621,6 +610,20 @@ if (financialMetrics) {
           </div>
         </section>
 
+        {performanceKPIs.length > 0 && (
+          <section className="mb-8 rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 backdrop-blur-sm">
+            <DashboardSectionHeading question="Performance Metrics" title="Financial Health Indicators" />
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+              {performanceKPIs.map((kpi) => (
+                <div key={kpi.label} className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
+                  <p className="font-mono text-[10px] tracking-wider text-zinc-500 uppercase">{kpi.label}</p>
+                  <p className={`mt-2 text-lg font-semibold ${accentText[kpi.accent]}`}>{kpi.value}</p>
+                  <p className="mt-1 text-[10px] text-zinc-600">{kpi.subtext}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {/* Footer ticker */}
         <footer className="mt-8 flex items-center justify-center gap-2 border-t border-zinc-800/40 pt-6">
           <span className="font-mono text-[10px] tracking-widest text-zinc-600 uppercase">

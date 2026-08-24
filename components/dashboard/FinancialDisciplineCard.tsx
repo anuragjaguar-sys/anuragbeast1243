@@ -1,5 +1,6 @@
 "use client";
-
+import RecordRelapseModal from "./RecordRelapseModal";
+import RecoveryDetailsModal from "./RecoveryDetailsModal";
 import { useEffect, useState } from "react";
 import {
   getBehaviourDashboardData,
@@ -11,6 +12,10 @@ import { formatINR } from "@/lib/financial-engine";
 
 export default function FinancialDisciplineCard() {
   const [data, setData] = useState<BehaviourDashboardData | null>(null);
+
+  const [showRecoveryDetails, setShowRecoveryDetails] = useState(false);
+
+  const [showRecordRelapse, setShowRecordRelapse] = useState(false);
 
   useEffect(() => {
     const loadData = () => {
@@ -25,6 +30,14 @@ export default function FinancialDisciplineCard() {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === "fire54_behaviour_profile") {
         loadData();
+        const profile = getBehaviourProfile();
+
+console.log("Last Trade Date:", profile.lastTradeDate);
+console.log("Recovery Start:", profile.recoveryStartDate);
+
+const dashboardData = getBehaviourDashboardData(profile);
+
+console.log("Dashboard Data:", dashboardData);
       }
     };
 
@@ -86,33 +99,51 @@ export default function FinancialDisciplineCard() {
   };
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 transition-all duration-300 hover:border-zinc-700/80 hover:shadow-lg hover:shadow-black/20">
-      <div className="absolute inset-0 bg-zinc-900/60" />
-      <div className="relative">
-        {/* Header */}
-        <div className="mb-5 flex items-center justify-between">
-          <div>
-            <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-              Behaviour & Discipline
-            </p>
-            <div className="mt-2 flex items-center gap-2">
-              <span className={`inline-flex h-2 w-2 rounded-full ${data.isFAndOFree ? "bg-emerald-500" : "bg-rose-500"}`} />
-              <span className={`text-sm font-semibold ${data.isFAndOFree ? "text-emerald-400" : "text-rose-400"}`}>
-                {data.isFAndOFree ? "🟢 F&O FREE" : "🔴 TRADED"}
-              </span>
-            </div>
-          </div>
-          {/* Milestone Badge */}
-          {data.currentMilestone && (
-            <div className={`rounded-lg border px-3 py-1.5 ${getMilestoneColor(data.currentMilestone.tier)}`}>
-              <p className="font-mono text-[10px] font-semibold tracking-wide uppercase">
-                🏆 {data.currentMilestone.name}
+    <>
+      <div className="group relative overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6 transition-all duration-300 hover:border-zinc-700/80 hover:shadow-lg hover:shadow-black/20">
+        <div className="absolute inset-0 bg-zinc-900/60" />
+        <div className="relative">
+          {/* Header */}
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+                Behaviour & Discipline
               </p>
+              <div className="mt-2 flex items-center gap-2">
+                <span className={`inline-flex h-2 w-2 rounded-full ${data.isFAndOFree ? "bg-emerald-500" : "bg-rose-500"}`} />
+                <span className={`text-sm font-semibold ${data.isFAndOFree ? "text-emerald-400" : "text-rose-400"}`}>
+                  {data.isFAndOFree ? "🟢 F&O FREE" : "🔴 TRADED"}
+                </span>
+              </div>
             </div>
-          )}
-        </div>
+            {/* Milestone Badge */}
+            {data.currentMilestone && (
+              <div className={`rounded-lg border px-3 py-1.5 ${getMilestoneColor(data.currentMilestone.tier)}`}>
+                <p className="font-mono text-[10px] font-semibold tracking-wide uppercase">
+                  🏆 {data.currentMilestone.name}
+                </p>
+              </div>
+            )}
+          </div>
 
-        {/* Streak Display */}
+          {/* Streak Display */}
+          <div className="mt-4 flex gap-3">
+
+  <button
+    onClick={() => setShowRecoveryDetails(true)}
+    className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-700"
+  >
+    Recovery Details
+  </button>
+
+  <button
+    onClick={() => setShowRecordRelapse(true)}
+    className="flex-1 rounded-lg bg-rose-600 py-2 text-sm font-medium text-white hover:bg-rose-700"
+  >
+    Record Relapse
+  </button>
+
+</div>
         <div className="mb-5">
           <p className="font-mono text-[10px] tracking-wider text-zinc-500 uppercase">
             Current Streak
@@ -197,7 +228,18 @@ export default function FinancialDisciplineCard() {
         <p className="text-center text-xs text-zinc-500 italic">
           Every disciplined day compounds into future wealth.
         </p>
+        </div>
       </div>
-    </div>
+
+      <RecoveryDetailsModal
+        isOpen={showRecoveryDetails}
+        onClose={() => setShowRecoveryDetails(false)}
+      />
+
+      <RecordRelapseModal
+        isOpen={showRecordRelapse}
+        onClose={() => setShowRecordRelapse(false)}
+      />
+    </>
   );
 }

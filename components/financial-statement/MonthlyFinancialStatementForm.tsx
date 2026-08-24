@@ -1,14 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
 import {
   getMonthLabel,
   INITIAL_MONTHLY_FINANCIAL_STATEMENT,
   type MonthlyFinancialStatement,
-  type Investment,
   type Decision,
+  type GoalContribution,
+  calculateSipAnnualReview,
 } from "@/lib/monthly-review";
-import { saveFinancialStatement, loadMonthlyReview } from "@/lib/storage";
+
+import {
+  saveFinancialStatement,
+  loadMonthlyReview,
+  getAllMonthlyReviews,
+} from "@/lib/storage";
+
+import { applyMonthlyStatement } from "@/lib/investments/apply-monthly-statement";
+
 import {
   calculateMonthlyIncome,
   calculateTotalExpenses,
@@ -16,6 +26,12 @@ import {
   formatINR,
 } from "@/lib/financial-engine";
 
+import {
+  loadGoals,
+  loadGoalLedger,
+  saveGoalLedger,
+  type Goal,
+} from "@/lib/goals";
 function CurrencyInput({
   label,
   value,
@@ -80,7 +96,9 @@ function SectionCard({
         </div>
         <div>
           <h2 className="text-lg font-semibold text-white">{title}</h2>
-          <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">{subtitle}</p>
+          <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+            {subtitle}
+          </p>
         </div>
       </div>
       {children}
@@ -88,12 +106,18 @@ function SectionCard({
   );
 }
 
-function BalanceWarning({ isBalanced, difference }: { isBalanced: boolean; difference: number }) {
+function BalanceWarning({
+  isBalanced,
+  difference,
+}: {
+  isBalanced: boolean;
+  difference: number;
+}) {
   if (isBalanced) return null;
 
   return (
     <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
-      <p className="font-mono text-xs font-semibold text-amber-400 uppercase tracking-wider">
+      <p className="font-mono text-xs font-semibold uppercase tracking-wider text-amber-400">
         ⚠ Cash Allocation Incomplete
       </p>
       <p className="mt-1 text-sm text-zinc-300">
@@ -103,95 +127,122 @@ function BalanceWarning({ isBalanced, difference }: { isBalanced: boolean; diffe
     </div>
   );
 }
-
 export default function MonthlyFinancialStatementForm() {
-  const [form, setForm] = useState<MonthlyFinancialStatement>(INITIAL_MONTHLY_FINANCIAL_STATEMENT);
-  const [showNotification, setShowNotification] = useState(false);
+  const [form, setForm] = useState<MonthlyFinancialStatement>(
+    INITIAL_MONTHLY_FINANCIAL_STATEMENT
+  );
 
+  const [showNotification, setShowNotification] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+const [goals] = useState<Goal[]>(
+  loadGoals()
+);
+  const sipAnnualReview = useMemo(() => {
+    const previousYearStatement = getAllMonthlyReviews()
+      .find(
+        (entry) =>
+          entry.data.month === form.month &&
+          entry.data.year === form.year - 1
+      )?.data ?? null;
+
+    return calculateSipAnnualReview(form, previousYearStatement);
+  }, [form]);
   useEffect(() => {
-    const existing = loadMonthlyReview();
-    if (existing && "version" in existing && existing.version === 2) {
-      setForm(existing as MonthlyFinancialStatement);
-    }
-  }, []);
+  const existing = loadMonthlyReview();
+
+  if (existing && "version" in existing && existing.version === 2) {
+    const statement = existing as MonthlyFinancialStatement;
+
+    setForm({
+      ...statement,
+      goalContributions: statement.goalContributions ?? [],
+    });
+  }
+}, []);
+
+  // ======================================================
+  // Generic Update
+  // ======================================================
 
   function updateField<K extends keyof MonthlyFinancialStatement>(
     name: K,
     value: MonthlyFinancialStatement[K]
   ) {
-    setForm((prev) => ({ ...prev, [name]: value }));
-  }
-
-  function updateIncomeField<K extends keyof MonthlyFinancialStatement["income"]>(
-    name: K,
-    value: string
-  ) {
     setForm((prev) => ({
       ...prev,
-      income: { ...prev.income, [name]: value },
+      [name]: value,
     }));
   }
 
-  function updateCashAllocationField<K extends keyof MonthlyFinancialStatement["cashAllocation"]>(
-    name: K,
-    value: string
-  ) {
+  // ======================================================
+  // Income
+  // ======================================================
+
+  function updateIncomeField<
+    K extends keyof MonthlyFinancialStatement["income"]
+  >(name: K, value: string) {
     setForm((prev) => ({
       ...prev,
-      cashAllocation: { ...prev.cashAllocation, [name]: value },
+      income: {
+        ...prev.income,
+        [name]: value,
+      },
     }));
   }
 
-  function updateAssetField<K extends keyof MonthlyFinancialStatement["assets"]>(
-    name: K,
-    value: string
-  ) {
+  // ======================================================
+  // Cash Allocation
+  // ======================================================
+
+  function updateCashAllocationField<
+    K extends keyof MonthlyFinancialStatement["cashAllocation"]
+  >(name: K, value: string) {
     setForm((prev) => ({
       ...prev,
-      assets: { ...prev.assets, [name]: value },
+      cashAllocation: {
+        ...prev.cashAllocation,
+        [name]: value,
+      },
     }));
   }
 
-  function updateLiabilityField<K extends keyof MonthlyFinancialStatement["liabilities"]>(
-    name: K,
-    value: string
-  ) {
+  // ======================================================
+  // Assets
+  // (Keep for now. Will remove after Portfolio Engine is complete.)
+  // ======================================================
+
+  function updateAssetField<
+    K extends keyof MonthlyFinancialStatement["assets"]
+  >(name: K, value: string) {
     setForm((prev) => ({
       ...prev,
-      liabilities: { ...prev.liabilities, [name]: value },
+      assets: {
+        ...prev.assets,
+        [name]: value,
+      },
     }));
   }
 
-  function addInvestment() {
-    const newInvestment: Investment = {
-      id: Date.now().toString(),
-      name: "",
-      category: "Mutual Fund",
-      monthlyContribution: "",
-      currentValue: "",
-      investedAmount: "",
-    };
+  // ======================================================
+  // Liabilities
+  // (Keep for now. Will remove later.)
+  // ======================================================
+
+  function updateLiabilityField<
+    K extends keyof MonthlyFinancialStatement["liabilities"]
+  >(name: K, value: string) {
     setForm((prev) => ({
       ...prev,
-      investments: [...prev.investments, newInvestment],
+      liabilities: {
+        ...prev.liabilities,
+        [name]: value,
+      },
     }));
   }
 
-  function updateInvestment(id: string, field: keyof Investment, value: string) {
-    setForm((prev) => ({
-      ...prev,
-      investments: prev.investments.map((inv) =>
-        inv.id === id ? { ...inv, [field]: value } : inv
-      ),
-    }));
-  }
-
-  function removeInvestment(id: string) {
-    setForm((prev) => ({
-      ...prev,
-      investments: prev.investments.filter((inv) => inv.id !== id),
-    }));
-  }
+  // ======================================================
+  // Decisions
+  // ======================================================
 
   function addDecision() {
     const newDecision: Decision = {
@@ -200,17 +251,27 @@ export default function MonthlyFinancialStatementForm() {
       reason: "",
       expectedOutcome: "",
     };
+
     setForm((prev) => ({
       ...prev,
       decisionJournal: [...prev.decisionJournal, newDecision],
     }));
   }
 
-  function updateDecision(id: string, field: keyof Decision, value: string) {
+  function updateDecision(
+    id: string,
+    field: keyof Decision,
+    value: string
+  ) {
     setForm((prev) => ({
       ...prev,
-      decisionJournal: prev.decisionJournal.map((dec) =>
-        dec.id === id ? { ...dec, [field]: value } : dec
+      decisionJournal: prev.decisionJournal.map((decision) =>
+        decision.id === id
+          ? {
+              ...decision,
+              [field]: value,
+            }
+          : decision
       ),
     }));
   }
@@ -218,286 +279,785 @@ export default function MonthlyFinancialStatementForm() {
   function removeDecision(id: string) {
     setForm((prev) => ({
       ...prev,
-      decisionJournal: prev.decisionJournal.filter((dec) => dec.id !== id),
+      decisionJournal: prev.decisionJournal.filter(
+        (decision) => decision.id !== id
+      ),
     }));
   }
+// ======================================================
+// Goal Contributions
+// ======================================================
 
-  function handleSave() {
-    saveFinancialStatement(form);
-    setShowNotification(true);
-    setTimeout(() => setShowNotification(false), 3500);
+function addGoalContribution() {
+  setForm((prev) => ({
+    ...prev,
+
+    goalContributions: [
+      ...(prev.goalContributions ?? []),
+      {
+        id: crypto.randomUUID(),
+        goalId: "",
+        goalTitle: "",
+        amount: "",
+      },
+    ],
+  }));
+}
+
+function updateGoalContribution(
+  id: string,
+  field: keyof GoalContribution,
+  value: string
+) {
+  setForm((prev) => ({
+    ...prev,
+
+    goalContributions: (prev.goalContributions ?? []).map(
+      (goal) =>
+        goal.id === id
+          ? {
+              ...goal,
+              [field]: value,
+            }
+          : goal
+    ),
+  }));
+}
+
+function removeGoalContribution(id: string) {
+  setForm((prev) => ({
+    ...prev,
+
+    goalContributions: (prev.goalContributions ?? []).filter(
+      (goal) => goal.id !== id
+    ),
+  }));
+}
+  // ======================================================
+  // Save
+  // ======================================================
+
+ function handleSave() {
+  const medicalInsurancePremium = goals
+    .filter((goal) => goal.category === "Insurance" && goal.timeframe === "Long Term")
+    .reduce((total, goal) => total + Number(goal.monthlyExpense || 0), 0);
+  const recordedMedicalExpense = Number(form.expenses.family.medical || 0);
+
+  if (recordedMedicalExpense < medicalInsurancePremium) {
+    setSaveError(
+      `${formatINR(medicalInsurancePremium - recordedMedicalExpense)} of medical insurance premium is unaccounted. Add it under Family → Medical expenses before saving.`
+    );
+    return;
   }
 
   const cashAllocationCheck = calculateCashAllocation(form);
+
+  if (!cashAllocationCheck.isBalanced) {
+    const difference = Math.abs(cashAllocationCheck.difference);
+    const issue =
+      cashAllocationCheck.difference > 0
+        ? `${formatINR(difference)} is unaccounted.`
+        : `${formatINR(difference)} is over-accounted.`;
+
+    setSaveError(
+      `${issue} Allocate every rupee in Cash Allocation before saving.`
+    );
+    return;
+  }
+
+  setSaveError(null);
+
+  // --------------------------------------------------
+  // Identify the month being saved
+  // --------------------------------------------------
+
+  const month = form.month;
+  const year = form.year;
+
+  const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+
+  // --------------------------------------------------
+  // Load the statement that was previously saved
+  // for this month.
+  // --------------------------------------------------
+
+  const previousStatement =
+    loadMonthlyReview(monthKey);
+
+  // --------------------------------------------------
+  // Save Goal Contributions to Goal Ledger
+  // --------------------------------------------------
+
+  const now = new Date();
+
+  const existingLedger = loadGoalLedger();
+
+  const updatedLedger = [...existingLedger];
+
+  for (const contribution of form.goalContributions ?? []) {
+    const amount = Number(
+      contribution.amount || 0
+    );
+
+    // Ignore empty / invalid contributions
+    if (
+      !contribution.goalId ||
+      amount <= 0
+    ) {
+      continue;
+    }
+
+    const existingIndex =
+      updatedLedger.findIndex(
+        (entry) =>
+          entry.goalId ===
+            contribution.goalId &&
+          entry.month === month &&
+          entry.year === year
+      );
+
+    const goal = goals.find(
+      (item) =>
+        item.id === contribution.goalId
+    );
+
+    const ledgerEntry = {
+      id:
+        existingIndex >= 0
+          ? updatedLedger[existingIndex].id
+          : crypto.randomUUID(),
+
+      goalId:
+        contribution.goalId,
+
+      goalTitle:
+        goal?.title ??
+        contribution.goalTitle,
+
+      amount,
+
+      month,
+
+      year,
+
+      date: now.toISOString(),
+    };
+
+    // Update existing month's contribution
+    // instead of creating a duplicate.
+    if (existingIndex >= 0) {
+      updatedLedger[existingIndex] =
+        ledgerEntry;
+    } else {
+      updatedLedger.push(
+        ledgerEntry
+      );
+    }
+  }
+
+  saveGoalLedger(updatedLedger);
+
+  // --------------------------------------------------
+  // Apply Portfolio changes
+  //
+  // IMPORTANT:
+  // Pass the previous statement so the processor
+  // can calculate only the difference.
+  // --------------------------------------------------
+
+  const statementToSave: MonthlyFinancialStatement = {
+    ...form,
+    sipAnnualReview,
+  };
+
+  const result =
+    applyMonthlyStatement(
+      statementToSave,
+      previousStatement
+    );
+
+  console.log(
+    "Portfolio Updated"
+  );
+
+  console.table(
+    result.updates
+  );
+
+  // --------------------------------------------------
+  // Save the NEW monthly statement
+  // --------------------------------------------------
+
+  saveFinancialStatement(
+    statementToSave,
+    monthKey,
+    getMonthLabel()
+  );
+
+  console.log(
+    "Goal Contributions Saved"
+  );
+
+  // --------------------------------------------------
+  // Success notification
+  // --------------------------------------------------
+
+  setShowNotification(true);
+
+  setTimeout(() => {
+    setShowNotification(false);
+  }, 3500);
+}
+  // ======================================================
+  // Dashboard Calculations
+  // ======================================================
+
+  const cashAllocationCheck = calculateCashAllocation(form);
+
   const totalIncome = calculateMonthlyIncome(form);
+
   const totalExpenses = calculateTotalExpenses(form);
 
   return (
-    <div className="min-h-full bg-[#0a0a0c] font-sans text-zinc-100">
-      {/* Success Notification */}
-      {showNotification && (
-        <div className="fixed top-6 right-6 z-[100] flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-5 py-3.5 shadow-lg shadow-emerald-500/10 backdrop-blur-sm">
-          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-sm text-white">
-            ✓
-          </span>
-          <span className="text-sm font-medium text-emerald-300">
-            Monthly Financial Statement Saved Successfully.
-          </span>
+  <div className="min-h-full bg-[#0a0a0c] font-sans text-zinc-100">
+    {/* Success Notification */}
+    {showNotification && (
+      <div className="fixed top-6 right-6 z-[100] flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-5 py-3.5 shadow-lg shadow-emerald-500/10 backdrop-blur-sm">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-sm text-white">
+          ✓
+        </span>
+        <span className="text-sm font-medium text-emerald-300">
+          Monthly Financial Statement Saved Successfully.
+        </span>
+      </div>
+    )}
+
+    {saveError && (
+      <div
+        role="alert"
+        className="fixed top-6 right-6 z-[100] max-w-md rounded-xl border border-amber-500/30 bg-amber-500/15 px-5 py-3.5 text-sm font-medium text-amber-200 shadow-lg shadow-amber-500/10 backdrop-blur-sm"
+      >
+        ⚠ {saveError}
+      </div>
+    )}
+
+    <div className="pointer-events-none fixed inset-0 overflow-hidden">
+      <div className="absolute -top-40 right-1/4 h-[500px] w-[500px] rounded-full bg-blue-500/[0.04] blur-[120px]" />
+      <div className="absolute bottom-0 left-1/3 h-[300px] w-[400px] rounded-full bg-emerald-500/[0.03] blur-[100px]" />
+    </div>
+
+    <main className="relative mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+
+      {/* Header */}
+
+      <header className="mb-10">
+
+        <div className="mb-4 flex items-center gap-4">
+
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-2xl ring-1 ring-blue-500/20">
+            📊
+          </div>
+
+          <div>
+
+            <p className="font-mono text-xs tracking-[0.25em] uppercase text-zinc-500">
+              Monthly Financial Statement
+            </p>
+
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+              {getMonthLabel()}
+            </h1>
+
+          </div>
+
         </div>
+
+        <p className="max-w-2xl text-base leading-relaxed text-zinc-400">
+          Record this month's financial activity. Portfolio values are managed
+          separately in the Portfolio module.
+        </p>
+
+      </header>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSave();
+        }}
+        className="space-y-6"
+      >
+
+        {/* =======================================================
+            MONTH INFORMATION
+        ======================================================= */}
+
+        <SectionCard
+          icon="📅"
+          title="Month Information"
+          subtitle="Basic details"
+          accent="emerald"
+        >
+
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+            <div>
+
+              <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                Month
+              </label>
+
+              <input
+                type="number"
+                min={1}
+                max={12}
+                value={form.month}
+                onChange={(e) =>
+                  updateField("month", Number(e.target.value))
+                }
+                className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 font-mono text-sm text-white"
+              />
+
+            </div>
+
+            <div>
+
+              <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                Year
+              </label>
+
+              <input
+                type="number"
+                value={form.year}
+                onChange={(e) =>
+                  updateField("year", Number(e.target.value))
+                }
+                className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 font-mono text-sm text-white"
+              />
+
+            </div>
+
+          </div>
+
+          <div className="mt-5">
+
+            <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+              Financial Notes
+            </label>
+
+            <textarea
+              value={form.financialNotes}
+              onChange={(e) =>
+                updateField("financialNotes", e.target.value)
+              }
+              rows={3}
+              className="w-full resize-none rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white"
+            />
+
+          </div>
+
+          <div className="mt-5">
+
+            <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+              Important Decisions
+            </label>
+
+            <textarea
+              value={form.importantDecisions}
+              onChange={(e) =>
+                updateField("importantDecisions", e.target.value)
+              }
+              rows={3}
+              className="w-full resize-none rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white"
+            />
+
+          </div>
+
+        </SectionCard>
+
+        {/* =======================================================
+            INCOME
+        ======================================================= */}
+
+        <SectionCard
+          icon="💰"
+          title="Income"
+          subtitle="Monthly inflows"
+          accent="emerald"
+        >
+
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+            <CurrencyInput
+              label="Salary (In Hand)"
+              value={form.income.salaryInHand}
+              onChange={(v) =>
+                updateIncomeField("salaryInHand", v)
+              }
+            />
+
+            <CurrencyInput
+              label="Other Income"
+              value={form.income.otherIncome}
+              onChange={(v) =>
+                updateIncomeField("otherIncome", v)
+              }
+            />
+
+          </div>
+
+          <div className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5">
+
+            <p className="font-mono text-xs font-semibold uppercase tracking-wider text-emerald-400">
+              Total Monthly Income
+            </p>
+
+            <p className="mt-2 text-3xl font-bold text-white">
+              {formatINR(totalIncome)}
+            </p>
+
+          </div>
+
+        </SectionCard>
+
+          {/* ============================================================
+    SECTION 3 : MONTHLY INVESTMENTS
+============================================================ */}
+
+<SectionCard
+  icon="📈"
+  title="Investments This Month"
+  subtitle="Monthly Contributions"
+  accent="blue"
+>
+  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+    <CurrencyInput
+      label="Mutual Fund SIP"
+      value={form.cashAllocation.investments}
+      onChange={(v) =>
+        updateCashAllocationField("investments", v)
+      }
+    />
+
+    <CurrencyInput
+      label="Additional Mutual Fund"
+      value={form.income.otherIncome}
+      onChange={(v) =>
+        updateIncomeField("otherIncome", v)
+      }
+    />
+
+    <CurrencyInput
+      label="PPF Contribution"
+      value={form.assets.ppf}
+      onChange={(v) =>
+        updateAssetField("ppf", v)
+      }
+    />
+
+    <CurrencyInput
+      label="Stocks Purchased"
+      value={form.assets.cash}
+      onChange={(v) =>
+        updateAssetField("cash", v)
+      }
+    />
+
+    <CurrencyInput
+      label="NPS Contribution"
+      value={form.assets.nps}
+      onChange={(v) =>
+        updateAssetField("nps", v)
+      }
+    />
+
+  </div>
+
+  <div className="mt-5 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+
+    <p className="font-mono text-xs uppercase tracking-wider text-blue-400">
+      Monthly Investment
+    </p>
+
+    <p className="mt-2 text-2xl font-semibold text-white">
+
+      {formatINR(
+        Number(form.cashAllocation.investments || 0) +
+        Number(form.income.otherIncome || 0) +
+        Number(form.assets.ppf || 0) +
+        Number(form.assets.cash || 0) +
+        Number(form.assets.nps || 0)
       )}
 
-      <div className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-40 right-1/4 h-[500px] w-[500px] rounded-full bg-blue-500/[0.04] blur-[120px]" />
-        <div className="absolute bottom-0 left-1/3 h-[300px] w-[400px] rounded-full bg-emerald-500/[0.03] blur-[100px]" />
+    </p>
+
+  </div>
+
+  <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-4">
+    <p className="font-mono text-xs font-semibold uppercase tracking-wider text-violet-300">
+      Annual SIP Check
+    </p>
+    <div className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+      <div>
+        <p className="text-zinc-400">Status</p>
+        <p className="mt-1 font-semibold text-white">{sipAnnualReview.status}</p>
       </div>
+      <div>
+        <p className="text-zinc-400">
+          {sipAnnualReview.comparedWithYear
+            ? `SIP in ${sipAnnualReview.comparedWithYear}`
+            : "Previous-year SIP"}
+        </p>
+        <p className="mt-1 font-semibold text-white">
+          {sipAnnualReview.previousMonthlySip === null
+            ? "Not available"
+            : formatINR(sipAnnualReview.previousMonthlySip)}
+        </p>
+      </div>
+      <div>
+        <p className="text-zinc-400">Annual change</p>
+        <p className="mt-1 font-semibold text-white">
+          {sipAnnualReview.increasePercent === null
+            ? "Baseline month"
+            : `${sipAnnualReview.increasePercent > 0 ? "+" : ""}${sipAnnualReview.increasePercent}%`}
+        </p>
+      </div>
+    </div>
+  </div>
 
-      <main className="relative mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-        {/* Header */}
-        <header className="mb-10">
-          <div className="mb-4 flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-2xl ring-1 ring-blue-500/20">
-              📊
-            </div>
-            <div>
-              <p className="font-mono text-xs tracking-[0.25em] text-zinc-500 uppercase">
-                Monthly Financial Statement
-              </p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                {getMonthLabel()}
-              </h1>
-            </div>
-          </div>
-          <p className="max-w-2xl text-base leading-relaxed text-zinc-400">
-            Complete financial snapshot for the month. Track income, expenses, investments, assets, and
-            decisions in one place.
-          </p>
-        </header>
+</SectionCard>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSave();
-          }}
-          className="space-y-6"
+
+{/* ============================================================
+SECTION 4 : GOAL CONTRIBUTIONS
+============================================================ */}
+
+<SectionCard
+  icon="🎯"
+  title="Goal Contributions"
+  subtitle="Allocate Money Towards Goals"
+  accent="emerald"
+>
+  <div className="space-y-4">
+
+    {form.goalContributions.map((contribution) => {
+
+      const selectedGoal = goals.find(
+        (goal) => goal.id === contribution.goalId
+      );
+
+      return (
+        <div
+          key={contribution.id}
+          className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
         >
-          {/* Section 1: Month Information */}
-          <SectionCard icon="📅" title="Month Information" subtitle="Basic details" accent="emerald">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <div>
-                <label className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-                  Month
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={12}
-                  value={form.month}
-                  onChange={(e) => updateField("month", Number(e.target.value))}
-                  className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 py-3 px-4 font-mono text-sm text-white transition-colors focus:border-emerald-500/40 focus:bg-zinc-900/80 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
-                />
-              </div>
-              <div>
-                <label className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-                  Year
-                </label>
-                <input
-                  type="number"
-                  value={form.year}
-                  onChange={(e) => updateField("year", Number(e.target.value))}
-                  className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 py-3 px-4 font-mono text-sm text-white transition-colors focus:border-emerald-500/40 focus:bg-zinc-900/80 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
-                />
-              </div>
-            </div>
-            <div className="mt-5">
-              <label className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-                Financial Notes
-              </label>
-              <textarea
-                value={form.financialNotes}
-                onChange={(e) => updateField("financialNotes", e.target.value)}
-                rows={3}
-                placeholder="Any important notes about this month..."
-                className="w-full resize-none rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white placeholder:text-zinc-600 transition-colors focus:border-emerald-500/40 focus:bg-zinc-900/80 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
-              />
-            </div>
-            <div className="mt-5">
-              <label className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-                Important Decisions
-              </label>
-              <textarea
-                value={form.importantDecisions}
-                onChange={(e) => updateField("importantDecisions", e.target.value)}
-                rows={3}
-                placeholder="Key financial decisions made this month..."
-                className="w-full resize-none rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white placeholder:text-zinc-600 transition-colors focus:border-emerald-500/40 focus:bg-zinc-900/80 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
-              />
-            </div>
-          </SectionCard>
 
-          {/* Section 2: Income */}
-          <SectionCard icon="💰" title="Income" subtitle="Monthly inflows" accent="emerald">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <CurrencyInput
-                label="Salary (In Hand)"
-                value={form.income.salaryInHand}
-                onChange={(v) => updateIncomeField("salaryInHand", v)}
-              />
-              <CurrencyInput
-                label="DA / Allowances"
-                value={form.income.daAllowances}
-                onChange={(v) => updateIncomeField("daAllowances", v)}
-              />
-              <CurrencyInput
-                label="Bonus"
-                value={form.income.bonus}
-                onChange={(v) => updateIncomeField("bonus", v)}
-              />
-              <CurrencyInput
-                label="Arrears"
-                value={form.income.arrears}
-                onChange={(v) => updateIncomeField("arrears", v)}
-              />
-              <CurrencyInput
-                label="Interest Income"
-                value={form.income.interestIncome}
-                onChange={(v) => updateIncomeField("interestIncome", v)}
-              />
-              <CurrencyInput
-                label="Dividend"
-                value={form.income.dividend}
-                onChange={(v) => updateIncomeField("dividend", v)}
-              />
-              <CurrencyInput
-                label="Rental Income"
-                value={form.income.rentalIncome}
-                onChange={(v) => updateIncomeField("rentalIncome", v)}
-              />
-              <CurrencyInput
-                label="Other Income"
-                value={form.income.otherIncome}
-                onChange={(v) => updateIncomeField("otherIncome", v)}
-              />
-            </div>
-            <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
-              <p className="font-mono text-xs font-semibold text-emerald-400 uppercase tracking-wider">
-                Total Monthly Income
-              </p>
-              <p className="mt-1 text-2xl font-semibold text-white">{formatINR(totalIncome)}</p>
-            </div>
-          </SectionCard>
+          <div className="grid gap-4 md:grid-cols-2">
 
-          {/* Section 3: Cash Allocation */}
-          <SectionCard icon="💵" title="Cash Allocation" subtitle="Where every rupee goes" accent="blue">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <CurrencyInput
-                label="Investments"
-                value={form.cashAllocation.investments}
-                onChange={(v) => updateCashAllocationField("investments", v)}
-              />
-              <CurrencyInput
-                label="Emergency Fund"
-                value={form.cashAllocation.emergencyFund}
-                onChange={(v) => updateCashAllocationField("emergencyFund", v)}
-              />
-              <CurrencyInput
-                label="Savings Account"
-                value={form.cashAllocation.savingsAccount}
-                onChange={(v) => updateCashAllocationField("savingsAccount", v)}
-              />
-              <CurrencyInput
-                label="Home Loan Prepayment"
-                value={form.cashAllocation.homeLoanPrepayment}
-                onChange={(v) => updateCashAllocationField("homeLoanPrepayment", v)}
-              />
-              <CurrencyInput
-                label="Monthly Expenses"
-                value={form.cashAllocation.monthlyExpenses}
-                onChange={(v) => updateCashAllocationField("monthlyExpenses", v)}
-              />
-              <CurrencyInput
-                label="Cash Remaining"
-                value={form.cashAllocation.cashRemaining}
-                onChange={(v) => updateCashAllocationField("cashRemaining", v)}
-              />
-            </div>
-            <BalanceWarning
-              isBalanced={cashAllocationCheck.isBalanced}
-              difference={cashAllocationCheck.difference}
-            />
-          </SectionCard>
+            {/* Goal Selection */}
 
-          {/* Section 4: Investments */}
-          <SectionCard icon="📈" title="Investments" subtitle="Portfolio details" accent="blue">
-            <div className="space-y-4">
-              {form.investments.map((investment) => (
-                <div key={investment.id} className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
-                  <div className="mb-3 flex items-center justify-between">
-                    <span className="font-mono text-xs text-zinc-500">Investment #{investment.id.slice(-4)}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeInvestment(investment.id)}
-                      className="text-xs text-rose-400 hover:text-rose-300"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-1 block font-mono text-[10px] tracking-wider text-zinc-500 uppercase">
-                        Investment Name
-                      </label>
-                      <input
-                        type="text"
-                        value={investment.name}
-                        onChange={(e) => updateInvestment(investment.id, "name", e.target.value)}
-                        placeholder="e.g. Parag Parikh Flexi Cap"
-                        className="w-full rounded-lg border border-zinc-800/80 bg-zinc-900/60 px-3 py-2 text-sm text-white placeholder:text-zinc-600 transition-colors focus:border-blue-500/40 focus:bg-zinc-900/80 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block font-mono text-[10px] tracking-wider text-zinc-500 uppercase">
-                        Category
-                      </label>
-                      <select
-                        value={investment.category}
-                        onChange={(e) => updateInvestment(investment.id, "category", e.target.value as Investment["category"])}
-                        className="w-full rounded-lg border border-zinc-800/80 bg-zinc-900/60 px-3 py-2 text-sm text-white transition-colors focus:border-blue-500/40 focus:bg-zinc-900/80 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
-                      >
-                        <option value="Mutual Fund">Mutual Fund</option>
-                        <option value="PPF">PPF</option>
-                        <option value="NPS">NPS</option>
-                        <option value="Gold">Gold</option>
-                        <option value="FD">FD</option>
-                        <option value="Stocks">Stocks</option>
-                      </select>
-                    </div>
-                    <CurrencyInput
-                      label="Monthly Contribution"
-                      value={investment.monthlyContribution}
-                      onChange={(v) => updateInvestment(investment.id, "monthlyContribution", v)}
-                    />
-                    <CurrencyInput
-                      label="Current Value"
-                      value={investment.currentValue}
-                      onChange={(v) => updateInvestment(investment.id, "currentValue", v)}
-                    />
-                    <CurrencyInput
-                      label="Invested Amount"
-                      value={investment.investedAmount}
-                      onChange={(v) => updateInvestment(investment.id, "investedAmount", v)}
-                    />
-                  </div>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addInvestment}
-                className="w-full rounded-xl border border-dashed border-zinc-800/80 bg-zinc-900/30 py-3 text-sm font-medium text-zinc-400 transition-colors hover:border-blue-500/40 hover:bg-blue-500/10 hover:text-blue-400"
+            <label className="block">
+
+              <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+                Goal
+              </span>
+
+              <select
+                value={contribution.goalId}
+                onChange={(e) => {
+
+                  const selected = goals.find(
+                    (goal) => goal.id === e.target.value
+                  );
+
+                  updateGoalContribution(
+                    contribution.id,
+                    "goalId",
+                    e.target.value
+                  );
+
+                  updateGoalContribution(
+                    contribution.id,
+                    "goalTitle",
+                    selected?.title ?? ""
+                  );
+
+                }}
+                className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
               >
-                + Add Investment
-              </button>
+
+                <option value="">
+                  Select a goal
+                </option>
+
+                {goals.map((goal) => (
+
+                  <option
+                    key={goal.id}
+                    value={goal.id}
+                  >
+                    {goal.title}
+                  </option>
+
+                ))}
+
+              </select>
+
+            </label>
+
+
+            {/* Contribution */}
+
+            <CurrencyInput
+              label="Contribution"
+              value={contribution.amount}
+              onChange={(value) =>
+                updateGoalContribution(
+                  contribution.id,
+                  "amount",
+                  value
+                )
+              }
+            />
+
+          </div>
+
+
+          {/* Goal Information */}
+
+          {selectedGoal && (
+
+            <div className="mt-4 rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
+
+              <div className="flex items-center justify-between">
+
+                <span className="text-xs text-zinc-500">
+                  Current Saved
+                </span>
+
+                <span className="font-mono text-sm text-emerald-400">
+                  {formatINR(selectedGoal.currentAmount)}
+                </span>
+
+              </div>
+
+              <div className="mt-2 flex items-center justify-between">
+
+                <span className="text-xs text-zinc-500">
+                  Target
+                </span>
+
+                <span className="font-mono text-sm text-zinc-300">
+                  {formatINR(selectedGoal.targetAmount)}
+                </span>
+
+              </div>
+
             </div>
-          </SectionCard>
+
+          )}
+
+
+          {/* Remove */}
+
+          <div className="mt-3 flex justify-end">
+
+            <button
+              type="button"
+              onClick={() =>
+                removeGoalContribution(
+                  contribution.id
+                )
+              }
+              className="rounded-lg border border-red-900/50 px-3 py-2 text-xs font-medium text-red-400 transition hover:border-red-700 hover:bg-red-950/30"
+            >
+              Remove
+            </button>
+
+          </div>
+
+        </div>
+
+      );
+
+    })}
+
+
+    {/* Add Goal */}
+
+    <button
+      type="button"
+      onClick={addGoalContribution}
+      className="w-full rounded-xl border border-dashed border-zinc-700 bg-zinc-900/30 px-4 py-3 text-sm font-medium text-zinc-400 transition hover:border-emerald-500/50 hover:bg-zinc-900/60 hover:text-emerald-400"
+    >
+      + Add Goal Contribution
+    </button>
+
+  </div>
+
+</SectionCard>
+
+{/* ============================================================
+    SECTION 4 : CASH ALLOCATION
+============================================================ */}
+
+<SectionCard
+  icon="💵"
+  title="Cash Allocation"
+  subtitle="Where the remaining money went"
+  accent="blue"
+>
+
+  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+    <CurrencyInput
+      label="Emergency Fund Added"
+      value={form.cashAllocation.emergencyFund}
+      onChange={(v) =>
+        updateCashAllocationField("emergencyFund", v)
+      }
+    />
+
+    <CurrencyInput
+      label="Savings / Running Account Added"
+      value={form.cashAllocation.savingsAccount}
+      onChange={(v) =>
+        updateCashAllocationField("savingsAccount", v)
+      }
+    />
+
+    <CurrencyInput
+      label="Home Loan Prepayment"
+      value={form.cashAllocation.homeLoanPrepayment}
+      onChange={(v) =>
+        updateCashAllocationField("homeLoanPrepayment", v)
+      }
+    />
+
+    <CurrencyInput
+      label="Monthly Expenses"
+      value={form.cashAllocation.monthlyExpenses}
+      onChange={(v) =>
+        updateCashAllocationField("monthlyExpenses", v)
+      }
+    />
+
+    <CurrencyInput
+      label="Cash Remaining"
+      value={form.cashAllocation.cashRemaining}
+      onChange={(v) =>
+        updateCashAllocationField("cashRemaining", v)
+      }
+    />
+
+  </div>
+
+  <BalanceWarning
+    isBalanced={cashAllocationCheck.isBalanced}
+    difference={cashAllocationCheck.difference}
+  />
+
+</SectionCard>
 
           {/* Section 5: Expenses */}
           <SectionCard icon="🧾" title="Expenses" subtitle="Categorized spending" accent="rose">
@@ -747,83 +1307,54 @@ export default function MonthlyFinancialStatementForm() {
               </div>
             </div>
           </SectionCard>
+{/* ============================================================
+    PORTFOLIO INFORMATION
+============================================================ */}
 
-          {/* Section 6: Assets */}
-          <SectionCard icon="🏦" title="Assets" subtitle="Current values" accent="violet">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <CurrencyInput
-                label="Savings Account"
-                value={form.assets.savingsAccount}
-                onChange={(v) => updateAssetField("savingsAccount", v)}
-              />
-              <CurrencyInput
-                label="Emergency Fund"
-                value={form.assets.emergencyFund}
-                onChange={(v) => updateAssetField("emergencyFund", v)}
-              />
-              <CurrencyInput
-                label="Mutual Funds"
-                value={form.assets.mutualFunds}
-                onChange={(v) => updateAssetField("mutualFunds", v)}
-              />
-              <CurrencyInput
-                label="PPF"
-                value={form.assets.ppf}
-                onChange={(v) => updateAssetField("ppf", v)}
-              />
-              <CurrencyInput
-                label="NPS"
-                value={form.assets.nps}
-                onChange={(v) => updateAssetField("nps", v)}
-              />
-              <CurrencyInput
-                label="FD"
-                value={form.assets.fd}
-                onChange={(v) => updateAssetField("fd", v)}
-              />
-              <CurrencyInput
-                label="Gold"
-                value={form.assets.gold}
-                onChange={(v) => updateAssetField("gold", v)}
-              />
-              <CurrencyInput
-                label="Property"
-                value={form.assets.property}
-                onChange={(v) => updateAssetField("property", v)}
-              />
-              <CurrencyInput
-                label="Cash"
-                value={form.assets.cash}
-                onChange={(v) => updateAssetField("cash", v)}
-              />
-            </div>
-          </SectionCard>
+<SectionCard
+  icon="🏦"
+  title="Portfolio"
+  subtitle="Managed separately"
+  accent="violet"
+>
+  <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-6">
 
-          {/* Section 7: Liabilities */}
-          <SectionCard icon="📉" title="Liabilities" subtitle="Debt & loans" accent="rose">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-              <CurrencyInput
-                label="Home Loan Outstanding"
-                value={form.liabilities.homeLoanOutstanding}
-                onChange={(v) => updateLiabilityField("homeLoanOutstanding", v)}
-              />
-              <CurrencyInput
-                label="Vehicle Loan"
-                value={form.liabilities.vehicleLoan}
-                onChange={(v) => updateLiabilityField("vehicleLoan", v)}
-              />
-              <CurrencyInput
-                label="Personal Loan"
-                value={form.liabilities.personalLoan}
-                onChange={(v) => updateLiabilityField("personalLoan", v)}
-              />
-              <CurrencyInput
-                label="Other Loan"
-                value={form.liabilities.otherLoan}
-                onChange={(v) => updateLiabilityField("otherLoan", v)}
-              />
-            </div>
-          </SectionCard>
+    <h3 className="text-lg font-semibold text-white">
+      Portfolio is now managed separately
+    </h3>
+
+    <p className="mt-3 text-sm leading-7 text-zinc-400">
+
+      ATHENA now keeps your investments, assets and liabilities
+      inside the Portfolio module.
+
+    </p>
+
+    <div className="mt-5 space-y-2 text-sm text-zinc-300">
+
+      <p>✓ Assets are updated from Portfolio.</p>
+
+      <p>✓ Liabilities are updated from Portfolio.</p>
+
+      <p>✓ Net Worth is calculated automatically.</p>
+
+      <p>✓ Dashboard reads directly from Portfolio.</p>
+
+    </div>
+
+    <div className="mt-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+
+      <p className="text-sm text-emerald-300">
+
+        Monthly Statement records this month's activity only.
+
+      </p>
+
+    </div>
+
+  </div>
+
+</SectionCard>
 
           {/* Section 10: Decision Journal */}
           <SectionCard icon="✍️" title="Decision Journal" subtitle="Track financial decisions" accent="emerald">

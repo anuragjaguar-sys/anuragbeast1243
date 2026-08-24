@@ -6,6 +6,7 @@ export interface RetirementAssumptions {
   mutualFunds: number;
   ppf: number;
   epf: number;
+  nps: number;
   emergencyFund: number;
   cash: number;
 
@@ -37,6 +38,7 @@ export interface YearProjection {
   mutualFunds: number;
   ppf: number;
   epf: number;
+  nps: number;
   emergencyFund: number;
 
   targetCorpus: number;

@@ -10,10 +10,9 @@ const navItems = [
   { href: "/profile", label: "Financial Profile", icon: "👤" },
 
   // Wealth
-  { href: "/investments", label: "Investments", icon: "📈" },
-  { href: "/home-loan", label: "Home Loan", icon: "🏦" },
-  { href: "/goals", label: "Goals", icon: "🎯" },
-  { href: "/spending-analytics", label: "Spending Analytics", icon: "💳" },
+{ href: "/portfolio", label: "Portfolio", icon: "💼" },
+{ href: "/goals", label: "Goals", icon: "🎯" },
+{ href: "/spending-analytics", label: "Spending Analytics", icon: "💳" },
 
   // Intelligence
   { href: "/reports", label: "Reports", icon: "📊" },

@@ -59,6 +59,7 @@ export default function HabitTracker() {
         monthlyHabits: [updatedHabits],
         achievements: [],
         goals: [],
+        tradingHistory: [],
       });
       
       loadData();

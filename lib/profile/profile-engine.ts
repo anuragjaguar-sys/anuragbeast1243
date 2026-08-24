@@ -1,11 +1,16 @@
 import { FinancialProfile } from "./profile.types";
 import {
+  hasSavedFinancialProfile,
   loadFinancialProfile,
   saveFinancialProfile,
 } from "./profile-storage";
 
 export function getFinancialProfile(): FinancialProfile {
   return loadFinancialProfile();
+}
+
+export function hasFinancialProfile(): boolean {
+  return hasSavedFinancialProfile();
 }
 
 export function updateFinancialProfile(

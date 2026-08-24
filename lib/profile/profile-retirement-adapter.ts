@@ -2,6 +2,7 @@ import { getFinancialProfile } from "./profile-engine";
 import { RetirementAssumptions } from "@/lib/retirement/types";
 import { getAssets, getPortfolio } from "@/lib/investments";
 import { getGoals } from "@/lib/goals";
+import { getAllMonthlyReviews } from "@/lib/storage";
 
 export function getRetirementAssumptionsFromProfile(): RetirementAssumptions {
   const profile = getFinancialProfile();
@@ -9,6 +10,13 @@ export function getRetirementAssumptionsFromProfile(): RetirementAssumptions {
     (goal) => goal.category === "Retirement" && goal.timeframe === "Long Term"
   );
   const assets = getAssets(getPortfolio());
+  const latestSipReview = getAllMonthlyReviews()
+    .map((entry) => entry.data.sipAnnualReview)
+    .find(
+      (review) =>
+        review?.status === "Increased" ||
+        review?.status === "Unchanged"
+    );
   const valueForCategory = (category: string) =>
     assets
       .filter((asset) => asset.category === category)
@@ -44,6 +52,7 @@ return {
   mutualFunds: valueForCategory("Mutual Fund"),
   ppf: valueForCategory("PPF"),
   epf: valueForCategory("EPF"),
+  nps: valueForCategory("NPS"),
   emergencyFund: valueForCategory("Emergency Fund"),
   cash: valueForCategory("Savings Account") + valueForCategory("Cash"),
 
@@ -57,7 +66,12 @@ return {
   monthlyInvestment: profile.income.monthlyInvestment,
 
   // Growth assumptions
-  annualSipIncrease: profile.assumptions.sipIncrease,
+  // A recorded annual SIP review takes precedence over the planned profile rate.
+  annualSipIncrease:
+    latestSipReview?.increasePercent !== undefined &&
+    latestSipReview.increasePercent !== null
+      ? latestSipReview.increasePercent / 100
+      : profile.assumptions.sipIncrease,
   expectedAnnualIncrement: profile.assumptions.salaryIncrement,
 
   // Returns
