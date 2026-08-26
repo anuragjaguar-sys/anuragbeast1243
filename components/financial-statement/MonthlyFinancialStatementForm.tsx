@@ -154,9 +154,17 @@ const [goals] = useState<Goal[]>(
     const statement = existing as MonthlyFinancialStatement;
 
     setForm({
-      ...statement,
-      goalContributions: statement.goalContributions ?? [],
-    });
+  ...statement,
+
+  goalContributions:
+    statement.goalContributions ?? [],
+
+  sipStepUp:
+    statement.sipStepUp ?? {
+      plannedPercent: "",
+      appliedThisMonth: "Not Applicable",
+    },
+});
   }
 }, []);
 
@@ -738,15 +746,103 @@ function removeGoalContribution(id: string) {
         updateCashAllocationField("investments", v)
       }
     />
+<div className="sm:col-span-2 rounded-xl border border-violet-500/30 bg-violet-500/10 p-5">
+  <div className="mb-4">
+    <p className="font-mono text-xs font-semibold uppercase tracking-wider text-violet-300">
+      Annual SIP Step-Up
+    </p>
 
+    <p className="mt-1 text-sm text-zinc-400">
+      Set the SIP increase you intend to apply during this year,
+      then confirm whether it was actually implemented this month.
+    </p>
+  </div>
+
+  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+    <label className="block">
+      <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+        Planned Step-Up for This Year
+      </span>
+
+      <div className="relative">
+        <input
+          type="number"
+          min="0"
+          max="100"
+          step="0.1"
+          value={form.sipStepUp.plannedPercent}
+          onChange={(e) =>
+            setForm((prev) => ({
+              ...prev,
+              sipStepUp: {
+                ...prev.sipStepUp,
+                plannedPercent: e.target.value,
+              },
+            }))
+          }
+          placeholder="e.g. 10"
+          className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 pr-10 font-mono text-sm text-white placeholder:text-zinc-600 focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
+        />
+
+        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-mono text-sm text-zinc-500">
+          %
+        </span>
+      </div>
+
+      <p className="mt-2 text-xs text-zinc-600">
+        Example: enter 10 for a 10% annual SIP increase.
+      </p>
+    </label>
+
+    <label className="block">
+      <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+        Was Step-Up Applied This Month?
+      </span>
+
+      <select
+        value={form.sipStepUp.appliedThisMonth}
+        onChange={(e) =>
+          setForm((prev) => ({
+            ...prev,
+            sipStepUp: {
+              ...prev.sipStepUp,
+              appliedThisMonth:
+                e.target.value as
+                  | "Yes"
+                  | "No"
+                  | "Not Applicable",
+            },
+          }))
+        }
+        className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
+      >
+        <option value="Not Applicable">
+          Not Applicable
+        </option>
+
+        <option value="Yes">
+          Yes — Step-Up Applied
+        </option>
+
+        <option value="No">
+          No — Step-Up Not Applied
+        </option>
+      </select>
+    </label>
+
+  </div>
+</div>
     <CurrencyInput
-      label="Additional Mutual Fund"
-      value={form.income.otherIncome}
-      onChange={(v) =>
-        updateIncomeField("otherIncome", v)
-      }
-    />
-
+  label="Mutual Fund SIP"
+  value={form.cashAllocation.investments}
+  onChange={(v) =>
+    updateCashAllocationField(
+      "investments",
+      v
+    )
+  }
+/>
     <CurrencyInput
       label="PPF Contribution"
       value={form.assets.ppf}
@@ -793,37 +889,159 @@ function removeGoalContribution(id: string) {
 
   </div>
 
-  <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-4">
+  <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-5">
+  <div className="mb-4">
     <p className="font-mono text-xs font-semibold uppercase tracking-wider text-violet-300">
-      Annual SIP Check
+      SIP Step-Up Review
     </p>
-    <div className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
-      <div>
-        <p className="text-zinc-400">Status</p>
-        <p className="mt-1 font-semibold text-white">{sipAnnualReview.status}</p>
-      </div>
-      <div>
-        <p className="text-zinc-400">
-          {sipAnnualReview.comparedWithYear
-            ? `SIP in ${sipAnnualReview.comparedWithYear}`
-            : "Previous-year SIP"}
-        </p>
-        <p className="mt-1 font-semibold text-white">
-          {sipAnnualReview.previousMonthlySip === null
-            ? "Not available"
-            : formatINR(sipAnnualReview.previousMonthlySip)}
-        </p>
-      </div>
-      <div>
-        <p className="text-zinc-400">Annual change</p>
-        <p className="mt-1 font-semibold text-white">
-          {sipAnnualReview.increasePercent === null
-            ? "Baseline month"
-            : `${sipAnnualReview.increasePercent > 0 ? "+" : ""}${sipAnnualReview.increasePercent}%`}
-        </p>
-      </div>
-    </div>
+
+    <p className="mt-1 text-xs text-zinc-500">
+      Annual SIP discipline and implementation check
+    </p>
   </div>
+
+  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+    <div>
+      <p className="text-xs text-zinc-500">
+        Previous SIP
+      </p>
+
+      <p className="mt-1 font-mono text-sm font-semibold text-white">
+        {sipAnnualReview.previousMonthlySip === null
+          ? "Not available"
+          : formatINR(
+              sipAnnualReview.previousMonthlySip
+            )}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-xs text-zinc-500">
+        Planned Step-Up
+      </p>
+
+      <p className="mt-1 font-mono text-sm font-semibold text-violet-300">
+        {sipAnnualReview.plannedStepUpPercent === null
+          ? "Not set"
+          : `${sipAnnualReview.plannedStepUpPercent}%`}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-xs text-zinc-500">
+        Expected SIP
+      </p>
+
+      <p className="mt-1 font-mono text-sm font-semibold text-white">
+        {sipAnnualReview.expectedMonthlySip === null
+          ? "Not available"
+          : formatINR(
+              sipAnnualReview.expectedMonthlySip
+            )}
+      </p>
+    </div>
+
+    <div>
+      <p className="text-xs text-zinc-500">
+        Actual SIP
+      </p>
+
+      <p className="mt-1 font-mono text-sm font-semibold text-emerald-400">
+        {formatINR(
+          sipAnnualReview.actualMonthlySip
+        )}
+      </p>
+    </div>
+
+  </div>
+
+  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+
+    <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
+      <p className="text-xs text-zinc-500">
+        Step-Up Decision
+      </p>
+
+      <p className="mt-1 text-sm font-semibold text-white">
+        {sipAnnualReview.stepUpApplied}
+      </p>
+    </div>
+
+    <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
+      <p className="text-xs text-zinc-500">
+        Status
+      </p>
+
+      <p
+        className={`mt-1 text-sm font-semibold ${
+          sipAnnualReview.stepUpStatus === "Applied"
+            ? "text-emerald-400"
+            : sipAnnualReview.stepUpStatus ===
+              "Above Expected"
+            ? "text-blue-400"
+            : sipAnnualReview.stepUpStatus ===
+              "Not Applied"
+            ? "text-amber-400"
+            : sipAnnualReview.stepUpStatus ===
+              "Below Expected"
+            ? "text-rose-400"
+            : "text-zinc-300"
+        }`}
+      >
+        {sipAnnualReview.stepUpStatus}
+      </p>
+    </div>
+
+    <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
+      <p className="text-xs text-zinc-500">
+        Variance From Expected
+      </p>
+
+      <p className="mt-1 text-sm font-semibold text-white">
+        {sipAnnualReview.varianceFromExpected === null
+          ? "Not available"
+          : formatINR(
+              sipAnnualReview.varianceFromExpected
+            )}
+      </p>
+    </div>
+
+  </div>
+
+  {sipAnnualReview.previousMonthlySip !== null && (
+    <div className="mt-4 rounded-lg border border-zinc-800/60 bg-zinc-950/30 p-3">
+      <p className="text-xs leading-relaxed text-zinc-400">
+        Previous SIP:{" "}
+        <span className="text-white">
+          {formatINR(
+            sipAnnualReview.previousMonthlySip
+          )}
+        </span>
+
+        {" → "}
+
+        Expected after step-up:{" "}
+        <span className="text-violet-300">
+          {sipAnnualReview.expectedMonthlySip === null
+            ? "Not set"
+            : formatINR(
+                sipAnnualReview.expectedMonthlySip
+              )}
+        </span>
+
+        {" → "}
+
+        Actual:{" "}
+        <span className="text-emerald-400">
+          {formatINR(
+            sipAnnualReview.actualMonthlySip
+          )}
+        </span>
+      </p>
+    </div>
+  )}
+</div>
 
 </SectionCard>
 

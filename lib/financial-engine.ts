@@ -1,6 +1,12 @@
 import { loadMonthlyReview, getAllMonthlyReviews } from "./storage";
 import { parseAmount } from "./spending-analytics";
 import type { MonthlyFinancialStatement } from "./monthly-review";
+import {
+  getPortfolioSummary,
+  getPortfolio,
+  getAssets,
+  getLiabilities,
+} from "./investments";
 
 export type FinancialMetrics = {
   netWorth: number;
@@ -101,7 +107,73 @@ function safeParseAmount(value: string): number {
   if (!value || !value.trim()) return 0;
   return parseAmount(value);
 }
+// =========================================
+// Current Financial Position
+// Profile = Opening Position
+// Monthly Statements = Changes
+// =========================================
 
+// =========================================
+// Current Financial Position
+// Profile = Opening Position
+// Monthly Statements = Changes
+// =========================================
+
+// =========================================
+// Current Financial Position
+// Profile = Opening Position
+// Monthly Statements = Changes
+// =========================================
+
+// =========================================
+// Current Financial Position
+// Profile = Opening Position
+// =========================================
+export function getCurrentFinancialPosition() {
+  const portfolio = getPortfolio();
+  const assets = getAssets(portfolio);
+  const liabilities = getLiabilities(portfolio);
+  const valueForCategory = (category: string) =>
+    assets
+      .filter((asset) => asset.category === category)
+      .reduce((sum, asset) => sum + asset.currentValue, 0);
+  const liabilityForCategory = (category: string) =>
+    liabilities
+      .filter((liability) => liability.category === category)
+      .reduce((sum, liability) => sum + liability.outstandingAmount, 0);
+
+  const mutualFunds = valueForCategory("Mutual Fund");
+  const ppf = valueForCategory("PPF");
+  const epf = valueForCategory("EPF");
+  const nps = valueForCategory("NPS");
+  const emergencyFund = valueForCategory("Emergency Fund");
+  const cash = valueForCategory("Savings Account") + valueForCategory("Cash");
+  const homeLoan = liabilityForCategory("Home Loan");
+  const otherLoans = liabilityForCategory("Other");
+  const financialAssets = assets.reduce(
+    (sum, asset) => sum + asset.currentValue,
+    0
+  );
+  const totalLiabilities = liabilities.reduce(
+    (sum, liability) => sum + liability.outstandingAmount,
+    0
+  );
+  const netWorth = financialAssets - totalLiabilities;
+
+  return {
+    mutualFunds,
+    ppf,
+    epf,
+    nps,
+    emergencyFund,
+    cash,
+    homeLoan,
+    otherLoans,
+    financialAssets,
+    totalLiabilities,
+    netWorth,
+  };
+}
 /**
  * Get portfolio allocation breakdown from MonthlyFinancialStatement
  */
@@ -268,13 +340,98 @@ export function getGoalsProgress(statement: MonthlyFinancialStatement): GoalProg
  */
 export function getFinancialMetrics(): FinancialMetrics | null {
   const review = loadMonthlyReview();
+const position = getCurrentFinancialPosition();
+const portfolio = getPortfolioSummary(getPortfolio());
+const currentPortfolio = getPortfolio();
 
-  if (!review) {
+const emergencyFund =
+  currentPortfolio.find(
+    (item) =>
+      item.type === "Asset" &&
+      item.name === "Emergency Fund"
+  )?.currentValue ?? 0;
+
+const homeLoan =
+  currentPortfolio.find(
+    (item) =>
+      item.type === "Liability" &&
+      item.name === "Home Loan"
+  )?.currentValue ?? 0;
+
+  const hasProfileData =
+    position.financialAssets > 0 ||
+    position.totalLiabilities > 0;
+
+  const hasMonthlyData =
+    review !== null;
+
+  if (!hasProfileData && !hasMonthlyData) {
     return null;
   }
 
-  // Handle new format (MonthlyFinancialStatement)
-  return getFinancialMetricsFromStatement(review);
+  const statementMetrics = review
+    ? getFinancialMetricsFromStatement(review)
+    : null;
+
+  const netWorth = portfolio.netWorth;
+
+  return {
+    netWorth,
+
+    financialAssets:
+  portfolio.totalAssets,
+
+    savingsRate:
+      statementMetrics?.savingsRate ?? 0,
+
+    investmentRate:
+      statementMetrics?.investmentRate ?? 0,
+
+    emergencyFundProgress:
+  Math.min(
+    Math.round(
+      (emergencyFund / 600000) * 100
+    ),
+    100
+  ),
+    loanProgress:
+  1550000 > 0
+    ? Math.min(
+        Math.round(
+          ((1550000 - homeLoan) /
+            1550000) *
+            100
+        ),
+        100
+      )
+    : 100,
+
+    fire54Score:
+      statementMetrics?.fire54Score ?? 0,
+
+    retirementScore:
+      statementMetrics?.retirementScore ?? 0,
+
+    expenseRatio:
+      statementMetrics?.expenseRatio ?? 0,
+
+    debtRatio:
+      position.financialAssets > 0
+        ? Math.round(
+            (position.totalLiabilities /
+              position.financialAssets) *
+              1000
+          ) / 10
+        : 0,
+
+    financialIndependenceProgress:
+      Math.min(
+        Math.round(
+          (netWorth / 50000000) * 100
+        ),
+        100
+      ),
+  };
 }
 
 // =========================================
