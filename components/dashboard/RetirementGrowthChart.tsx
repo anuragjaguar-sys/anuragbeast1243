@@ -13,6 +13,7 @@ import {
 } from "recharts";
 
 import { getRetirementProjection } from "@/lib/retirement/retirement-engine";
+import { getRetirementAssumptionsFromProfile } from "@/lib/profile/profile-retirement-adapter";
 import { useProfile } from "@/lib/profile/profile-context";
 import { YearProjection } from "@/lib/retirement/types";
 
@@ -27,7 +28,8 @@ export default function RetirementGrowthChart() {
     );
   }
 
-  const projection = getRetirementProjection(profile);
+  const retirementInputs = getRetirementAssumptionsFromProfile(profile);
+  const projection = getRetirementProjection(retirementInputs);
 
   const data = (projection.yearlyProjection ?? []).map((yearData: YearProjection) => ({
     ...yearData,

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useProfile } from "@/lib/profile/profile-context";
 import { getRetirementProjection } from "@/lib/retirement/retirement-engine";
+import { getRetirementAssumptionsFromProfile } from "@/lib/profile/profile-retirement-adapter";
 
 type EventName = "none" | "sabbatical" | "secondHome" | "education";
 const presets = { sabbatical: { label: "Sabbatical", cost: 0, year: 1, pause: 12 }, secondHome: { label: "Second home", cost: 4000000, year: 1, pause: 0 }, education: { label: "Education", cost: 2500000, year: 8, pause: 0 } };
@@ -14,7 +15,8 @@ export default function LifeEventSimulatorCard() {
   const [event, setEvent] = useState<EventName>("none");
   const [inputs, setInputs] = useState({ cost: 0, year: 1, pause: 0, recoveryMonths: 36 });
   if (loading) return <div className="rounded-3xl border border-zinc-800/60 bg-zinc-950/60 p-6"><p className="text-sm text-zinc-400">Loading simulator...</p></div>;
-  const projection = getRetirementProjection(profile);
+  const retirementInputs = getRetirementAssumptionsFromProfile(profile);
+  const projection = getRetirementProjection(retirementInputs);
   const yearsLeft = Math.max(projection.yearsLeft, 1);
   const returnRate = Math.max(profile.assumptions.equityReturn, 0);
   const impact = event === "none" ? 0 : (inputs.cost + profile.income.monthlyInvestment * inputs.pause) * Math.pow(1 + returnRate, Math.max(0, yearsLeft - inputs.year));
