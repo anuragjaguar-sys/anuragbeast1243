@@ -1,88 +1,123 @@
-import { FinancialProfile } from "./profile.types";
+import { supabase } from "@/lib/supabase";
+import type { FinancialProfile } from "./profile.types";
 import { DEFAULT_FINANCIAL_PROFILE } from "./profile";
+import { StorageManager } from "@/lib/core/storage-manager";
 
-const PROFILE_STORAGE_KEY = "fire54-financial-profile";
+const PROFILE_KEY = StorageManager.KEYS.PROFILE;
 
-export function hasSavedFinancialProfile(): boolean {
-  if (typeof window === "undefined") {
-    return false;
-  }
+export async function hasSavedFinancialProfile(): Promise<boolean> {
+  // 1. Check local cache first for instant response
+  const cached = StorageManager.get<FinancialProfile | null>(PROFILE_KEY, null);
+  if (cached) return true;
 
-  return localStorage.getItem(PROFILE_STORAGE_KEY) !== null;
-}
-
-export function loadFinancialProfile(): FinancialProfile {
-  if (typeof window === "undefined") {
-    return DEFAULT_FINANCIAL_PROFILE;
-  }
-
+  // 2. Check remote database if authenticated
   try {
-    const stored = localStorage.getItem(PROFILE_STORAGE_KEY);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
 
-    if (!stored) {
-      return DEFAULT_FINANCIAL_PROFILE;
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("user_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Failed to check financial profile:", error.message || error);
+      return false;
     }
 
-    const saved = JSON.parse(stored) as Partial<FinancialProfile>;
-
-    return {
-      personal: {
-        ...DEFAULT_FINANCIAL_PROFILE.personal,
-        ...saved.personal,
-      },
-
-      income: {
-        ...DEFAULT_FINANCIAL_PROFILE.income,
-        ...saved.income,
-      },
-
-      assets: {
-        ...DEFAULT_FINANCIAL_PROFILE.assets,
-        ...saved.assets,
-      },
-
-      liabilities: {
-        ...DEFAULT_FINANCIAL_PROFILE.liabilities,
-        ...saved.liabilities,
-      },
-
-      assumptions: {
-        ...DEFAULT_FINANCIAL_PROFILE.assumptions,
-        ...saved.assumptions,
-      },
-
-      goals: {
-        ...DEFAULT_FINANCIAL_PROFILE.goals,
-        ...saved.goals,
-      },
-    };
-  } catch (error) {
-    console.error("Failed to load financial profile:", error);
-    return DEFAULT_FINANCIAL_PROFILE;
+    return data !== null;
+  } catch {
+    return false;
   }
 }
 
-export function saveFinancialProfile(
-  profile: FinancialProfile
-): void {
-  if (typeof window === "undefined") {
-    return;
-  }
+export async function loadFinancialProfile(): Promise<FinancialProfile> {
+  // Read local cache as initial baseline
+  const cachedProfile = StorageManager.get<FinancialProfile | null>(PROFILE_KEY, null);
 
   try {
-    localStorage.setItem(
-      PROFILE_STORAGE_KEY,
-      JSON.stringify(profile)
-    );
-  } catch (error) {
-    console.error("Failed to save financial profile:", error);
+    const { data: { user } } = await supabase.auth.getUser();
+
+    // If unauthenticated, return cached local profile or system default
+    if (!user) {
+      return cachedProfile ?? DEFAULT_FINANCIAL_PROFILE;
+    }
+
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("data")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (error || !data) {
+      if (error) console.error("Failed to load financial profile:", error.message || error);
+      return cachedProfile ?? DEFAULT_FINANCIAL_PROFILE;
+    }
+
+    const saved = (data.data || {}) as Partial<FinancialProfile>;
+
+    const merged: FinancialProfile = {
+      householdMode: saved.householdMode ?? DEFAULT_FINANCIAL_PROFILE.householdMode,
+      partner: saved.partner ? { ...DEFAULT_FINANCIAL_PROFILE.partner, ...saved.partner } : DEFAULT_FINANCIAL_PROFILE.partner,
+      personal: { ...DEFAULT_FINANCIAL_PROFILE.personal, ...saved.personal },
+      income: { ...DEFAULT_FINANCIAL_PROFILE.income, ...saved.income },
+      assets: { ...DEFAULT_FINANCIAL_PROFILE.assets, ...saved.assets },
+      liabilities: { ...DEFAULT_FINANCIAL_PROFILE.liabilities, ...saved.liabilities },
+      assumptions: { ...DEFAULT_FINANCIAL_PROFILE.assumptions, ...saved.assumptions },
+      goals: { ...DEFAULT_FINANCIAL_PROFILE.goals, ...saved.goals },
+    };
+
+    // Update local cache with latest server record
+    StorageManager.set(PROFILE_KEY, merged);
+    return merged;
+  } catch (err) {
+    console.warn("[ProfileStorage] Falling back to local cache:", err);
+    return cachedProfile ?? DEFAULT_FINANCIAL_PROFILE;
   }
 }
 
-export function resetFinancialProfile(): void {
-  if (typeof window === "undefined") {
+export async function saveFinancialProfile(profile: FinancialProfile): Promise<void> {
+  // Always update local cache immediately for responsive UI
+  StorageManager.set(PROFILE_KEY, profile);
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    // User is working in local/guest mode; local state is saved
     return;
   }
 
-  localStorage.removeItem(PROFILE_STORAGE_KEY);
+  const payload = {
+    user_id: user.id,
+    data: profile,
+  };
+
+  const { error } = await supabase
+    .from("profiles")
+    .upsert(payload, { onConflict: "user_id" });
+
+  if (error) {
+    console.error("Failed to sync financial profile to cloud:", error.message || JSON.stringify(error));
+    throw new Error(error.message || "Database upsert failed due to RLS policy");
+  }
+}
+
+export async function resetFinancialProfile(): Promise<void> {
+  StorageManager.remove(PROFILE_KEY);
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase
+      .from("profiles")
+      .delete()
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("Failed to reset remote financial profile:", error.message || error);
+    }
+  } catch (err) {
+    console.error("Error during profile reset:", err);
+  }
 }

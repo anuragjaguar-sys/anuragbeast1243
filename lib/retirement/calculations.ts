@@ -5,7 +5,7 @@
  * Financial Calculation Utilities
  */
 
-import { RetirementAssumptions } from "./types";
+import type { RetirementAssumptions } from "./types";
 
 /**
  * Inflate today's monthly income

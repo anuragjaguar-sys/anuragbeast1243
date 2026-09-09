@@ -1,15 +1,20 @@
 "use client";
-
 import { useState } from "react";
-import { getAssets, getLiabilities, getPortfolio } from "@/lib/investments";
-import { getWealthMetrics } from "@/lib/wealth/wealth-engine";
 
-export default function NetWorthCard() {
+export interface NetWorthCardProps {
+  metrics: {
+    status: string;
+    totalAssets: number;
+    totalLiabilities: number;
+    netWorth: number;
+    wealthScore: number;
+  };
+  assets: { id: string; name: string; currentValue: number }[];
+  liabilities: { id: string; name: string; outstandingAmount: number }[];
+}
+
+export default function NetWorthCard({ metrics, assets, liabilities }: NetWorthCardProps) {
   const [showBreakdown, setShowBreakdown] = useState(false);
-  const metrics = getWealthMetrics();
-  const portfolio = getPortfolio();
-  const assets = getAssets(portfolio);
-  const liabilities = getLiabilities(portfolio);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("en-IN", {
@@ -21,10 +26,7 @@ export default function NetWorthCard() {
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-lg">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-xl font-bold text-white">
-          💰 Net Worth
-        </h2>
-
+        <h2 className="text-xl font-bold text-white">💰 Net Worth</h2>
         <span
           className={`rounded-full px-3 py-1 text-sm font-medium
             ${
@@ -64,7 +66,6 @@ export default function NetWorthCard() {
             <span>Wealth Score</span>
             <span>{metrics.wealthScore}/100</span>
           </div>
-
           <div className="h-3 rounded-full bg-slate-700">
             <div
               className="h-3 rounded-full bg-emerald-500"
@@ -77,7 +78,6 @@ export default function NetWorthCard() {
           type="button"
           onClick={() => setShowBreakdown((visible) => !visible)}
           className="w-full rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-200 transition hover:border-emerald-400 hover:text-white"
-          aria-expanded={showBreakdown}
         >
           {showBreakdown ? "Hide breakdown" : "View net worth breakdown"}
         </button>
@@ -86,28 +86,18 @@ export default function NetWorthCard() {
           <div className="space-y-5 rounded-xl border border-slate-700 bg-slate-950/50 p-4">
             <BreakdownSection
               title="Assets"
-              items={assets.map((asset) => ({
-                id: asset.id,
-                name: asset.name,
-                value: asset.currentValue,
-              }))}
+              items={assets}
               total={metrics.totalAssets}
               formatCurrency={formatCurrency}
               emptyMessage="No assets have been added to Portfolio yet."
             />
-
             <BreakdownSection
               title="Liabilities"
-              items={liabilities.map((liability) => ({
-                id: liability.id,
-                name: liability.name,
-                value: liability.outstandingAmount,
-              }))}
+              items={liabilities}
               total={metrics.totalLiabilities}
               formatCurrency={formatCurrency}
               emptyMessage="No liabilities have been added to Portfolio."
             />
-
             <div className="flex justify-between border-t border-slate-700 pt-3 font-semibold text-white">
               <span>Assets − Liabilities</span>
               <span>{formatCurrency(metrics.netWorth)}</span>
@@ -119,31 +109,18 @@ export default function NetWorthCard() {
   );
 }
 
-function BreakdownSection({
-  title,
-  items,
-  total,
-  formatCurrency,
-  emptyMessage,
-}: {
-  title: string;
-  items: { id: string; name: string; value: number }[];
-  total: number;
-  formatCurrency: (value: number) => string;
-  emptyMessage: string;
-}) {
+function BreakdownSection({ title, items, total, formatCurrency, emptyMessage }: any) {
   return (
     <section>
       <div className="mb-2 flex justify-between text-sm font-semibold text-white">
         <span>{title}</span>
         <span>{formatCurrency(total)}</span>
       </div>
-
       {items.length === 0 ? (
         <p className="text-sm text-slate-400">{emptyMessage}</p>
       ) : (
         <ul className="space-y-2 text-sm text-slate-300">
-          {items.map((item) => (
+          {items.map((item: any) => (
             <li key={item.id} className="flex justify-between gap-4">
               <span>{item.name}</span>
               <span className="shrink-0">{formatCurrency(item.value)}</span>

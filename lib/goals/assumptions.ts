@@ -1,35 +1,41 @@
-// =========================================
-// ATHENA Goal Assumptions
-// =========================================
+import { DEFAULT_MACRO_ASSUMPTIONS } from '@/lib/core/assumptions';
 
-export const GOAL_ASSUMPTIONS = {
-
-  // Retirement
-  retirement: {
-    targetAge: 54,
-    targetCorpus: 48000000,          // ₹4.8 Cr
-    targetMonthlyIncome: 200000,     // ₹2 Lakh/month
-  },
-
-  // Emergency Fund
+export interface GoalAssumptions {
+  defaultInflationRate: number;
+  expectedEquityReturn: number;
+  expectedDebtReturn: number;
+  bufferFactor: number;
   emergencyFund: {
-    targetMonths: 12,
-  },
-
-  // Investment
+    targetMonths: number;
+  };
+  homeLoan: {
+    targetOutstanding: number;
+  };
   investment: {
-    targetMonthlyInvestment: 50000,
-    expectedAnnualReturn: 12,
-  },
+    targetMonthlyInvestment: number;
+  };
+  netWorth: {
+    targetNetWorth: number;
+  };
+}
 
-  // Home Loan
+export const DEFAULT_GOAL_ASSUMPTIONS: GoalAssumptions = {
+  defaultInflationRate: DEFAULT_MACRO_ASSUMPTIONS.inflationRate,
+  expectedEquityReturn: DEFAULT_MACRO_ASSUMPTIONS.equityReturnRate,
+  expectedDebtReturn: DEFAULT_MACRO_ASSUMPTIONS.debtReturnRate,
+  bufferFactor: 1.10,
+  emergencyFund: {
+    targetMonths: 6,
+  },
   homeLoan: {
     targetOutstanding: 0,
   },
-
-  // Net Worth
-  netWorth: {
-    targetNetWorth: 50000000,        // ₹5 Cr
+  investment: {
+    targetMonthlyInvestment: 50000,
   },
+  netWorth: {
+    targetNetWorth: 20000000,
+  },
+};
 
-} as const;
+export const GOAL_ASSUMPTIONS: GoalAssumptions = DEFAULT_GOAL_ASSUMPTIONS;

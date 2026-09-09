@@ -1,23 +1,21 @@
 "use client";
 
-import { getCFOInsight } from "@/lib/intelligence/cfo-engine";
-import { getDecisionPlan } from "@/lib/intelligence/decision-engine";
-import { generateActions, getTopPriorityAction } from "@/lib/intelligence/action-engine";
-import { getMonthlyCFOReview } from "@/lib/intelligence/monthly-cfo-engine";
-import { getFinancialMetrics, formatINR } from "@/lib/financial-engine";
+export interface AthenaCommandCenterProps {
+  commandData: {
+    plan: { phase: string; nextAction: string } | null;
+    score: number;
+    savings: number;
+    investments: number;
+    emergency: number;
+    review: { month: string; overallStatus: string; strength: string; risk: string };
+    topAction: { title: string; impact: string } | null;
+    cfo: { headline: string; recommendedAction: string };
+  };
+}
 
-export default function AthenaCommandCenter() {
-  const cfo = getCFOInsight();
-  const plan = getDecisionPlan();
-  const actions = generateActions();
-  const topAction = getTopPriorityAction(actions);
-  const review = getMonthlyCFOReview();
-  const metrics = getFinancialMetrics();
-
-  const score = metrics?.fire54Score ?? 0;
-  const savings = metrics?.savingsRate ?? 0;
-  const investments = metrics?.investmentRate ?? 0;
-  const emergency = metrics?.emergencyFundProgress ?? 0;
+export default function AthenaCommandCenter({ commandData }: AthenaCommandCenterProps) {
+  if (!commandData) return null;
+  const { plan, score, savings, investments, emergency, review, topAction, cfo } = commandData;
 
   return (
     <div className="rounded-2xl border border-zinc-800/60 bg-gradient-to-br from-zinc-900/80 to-zinc-950/90 p-6 shadow-lg shadow-black/10">
@@ -62,19 +60,19 @@ export default function AthenaCommandCenter() {
 
         <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
           <p className="text-xs text-zinc-500 uppercase font-mono">Monthly Status</p>
-          <p className="mt-1 text-sm text-zinc-200">{review.month}</p>
+          <p className="mt-1 text-sm text-zinc-200">{review?.month}</p>
           <div className="mt-2">
             <div className="text-xs text-zinc-500">Overall</div>
-            <div className="text-sm font-semibold text-white">{review.overallStatus}</div>
+            <div className="text-sm font-semibold text-white">{review?.overallStatus}</div>
           </div>
           <div className="mt-2 text-sm text-zinc-300">
             <div>
               <div className="text-xs text-zinc-500">Strength</div>
-              <div className="text-sm text-zinc-200">{review.strength}</div>
+              <div className="text-sm text-zinc-200">{review?.strength}</div>
             </div>
             <div className="mt-2">
               <div className="text-xs text-zinc-500">Risk</div>
-              <div className="text-sm text-zinc-200">{review.risk}</div>
+              <div className="text-sm text-zinc-200">{review?.risk}</div>
             </div>
           </div>
         </div>
@@ -96,8 +94,8 @@ export default function AthenaCommandCenter() {
         <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 p-4">
           <p className="text-xs text-zinc-500 uppercase font-mono">CFO Message</p>
           <div className="mt-2">
-            <div className="text-lg font-semibold text-white">{cfo.headline}</div>
-            <div className="mt-1 text-sm text-zinc-200">{cfo.recommendedAction}</div>
+            <div className="text-lg font-semibold text-white">{cfo?.headline}</div>
+            <div className="mt-1 text-sm text-zinc-200">{cfo?.recommendedAction}</div>
           </div>
         </div>
       </div>

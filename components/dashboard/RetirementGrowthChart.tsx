@@ -2,7 +2,8 @@
 
 import {
   ResponsiveContainer,
-  LineChart,
+  ComposedChart,
+  Area,
   Line,
   CartesianGrid,
   XAxis,
@@ -12,25 +13,49 @@ import {
 } from "recharts";
 
 import { getRetirementProjection } from "@/lib/retirement/retirement-engine";
+import { useProfile } from "@/lib/profile/profile-context";
+import { YearProjection } from "@/lib/retirement/types";
 
 export default function RetirementGrowthChart() {
-  const projection = getRetirementProjection();
+  const { profile, loading } = useProfile();
 
-  const data = projection.yearlyProjection ?? [];
-console.log("Retirement Chart Data:", data);
+  if (loading) {
+    return (
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-zinc-400">
+        Loading...
+      </div>
+    );
+  }
+
+  const projection = getRetirementProjection(profile);
+
+  const data = (projection.yearlyProjection ?? []).map((yearData: YearProjection) => ({
+    ...yearData,
+    monteCarloRange: [yearData.corpus10, yearData.corpus90],
+  }));
+
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-lg">
-      <h2 className="mb-1 text-xl font-bold text-white">
-        📈 Retirement Growth Projection
-      </h2>
-
-      <p className="mb-6 text-sm text-zinc-400">
-        Expected corpus growth until retirement
-      </p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="mb-1 text-xl font-bold text-white">
+            📈 Retirement Monte Carlo Projection
+          </h2>
+          <p className="mb-6 text-sm text-zinc-400">
+            Based on 1,000 market simulations • 10th to 90th Percentile
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-zinc-400">Success Probability</p>
+          <p className={`text-2xl font-bold ${projection.probabilityOfSuccess >= 75 ? 'text-green-500' : 'text-amber-500'}`}>
+            {projection.probabilityOfSuccess}%
+          </p>
+        </div>
+      </div>
 
       <div className="h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
+          <ComposedChart data={data}>
             <CartesianGrid stroke="#27272a" strokeDasharray="3 3" />
 
             <XAxis
@@ -46,19 +71,31 @@ console.log("Retirement Chart Data:", data);
             />
 
             <Tooltip
-              formatter={(value) => {
+              contentStyle={{ backgroundColor: "#18181b", borderColor: "#27272a", color: "#fff" }}
+              formatter={(value, name) => {
+                if (Array.isArray(value)) {
+                   return [`₹${(value[0] / 10000000).toFixed(2)}Cr - ₹${(value[1] / 10000000).toFixed(2)}Cr`, "Confidence Band"];
+                }
                 if (typeof value !== "number") return "";
-
-                return [`₹${(value / 10000000).toFixed(2)} Cr`];
+                return [`₹${(value / 10000000).toFixed(2)} Cr`, name];
               }}
             />
 
             <Legend />
 
+            <Area
+              type="monotone"
+              dataKey="monteCarloRange"
+              name="Probability Range (10% - 90%)"
+              stroke="none"
+              fill="#22c55e"
+              fillOpacity={0.15}
+            />
+
             <Line
               type="monotone"
               dataKey="corpus"
-              name="Projected Corpus"
+              name="Projected Corpus (Expected)"
               stroke="#22c55e"
               strokeWidth={3}
               dot={false}
@@ -73,7 +110,7 @@ console.log("Retirement Chart Data:", data);
               strokeDasharray="5 5"
               dot={false}
             />
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
     </div>

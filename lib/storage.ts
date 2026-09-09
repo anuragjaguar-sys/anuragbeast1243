@@ -1,3 +1,4 @@
+import { StorageManager } from "@/lib/core/storage-manager";
 import {
   getMonthKey,
   getMonthLabel,
@@ -119,6 +120,11 @@ function migrateLegacyData(
       otherLoan: "",
     },
     decisionJournal: [],
+
+sipStepUp: {
+  plannedPercent: "",
+  appliedThisMonth: "Not Applicable",
+},
   };
 
   return statement;
@@ -131,7 +137,7 @@ export function migrateToNewFormat(): void {
   if (!isBrowser()) return;
 
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = StorageManager.get<string | null>(STORAGE_KEY, null);
     if (!raw) return;
 
     // Parse as unknown first since it might be legacy format
@@ -172,14 +178,14 @@ export function migrateToNewFormat(): void {
     }
 
     // Save migrated data
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newStore));
+    StorageManager.set(STORAGE_KEY, newStore);
     console.log("Data migration completed successfully");
   } catch (error) {
     console.error("Data migration failed:", error);
   }
 }
 
-const STORAGE_KEY = "fire54_monthly_reviews";
+const STORAGE_KEY = StorageManager.KEYS.MONTHLY_REVIEWS;
 
 export type StoredFinancialStatement = {
   monthKey: string;
@@ -195,41 +201,36 @@ function isBrowser(): boolean {
 }
 
 function readStore(): MonthlyReviewsStore {
-  if (!isBrowser()) return {};
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return {};
-    }
-
-    return parsed as MonthlyReviewsStore;
-  } catch {
+  const store = StorageManager.get<MonthlyReviewsStore>(STORAGE_KEY, {});
+  if (!store || typeof store !== "object" || Array.isArray(store)) {
     return {};
   }
+  return store;
 }
 
 function writeStore(store: MonthlyReviewsStore): void {
-  if (!isBrowser()) return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+  StorageManager.set(STORAGE_KEY, store);
 }
 
 /** Load a monthly review by key. Defaults to the current month. */
 export function loadMonthlyReview(
-  monthKey: string = getMonthKey()
+  monthKey?: string
 ): MonthlyFinancialStatement | null {
 
   const store = readStore();
+  const requestedMonthKey = monthKey ?? getMonthKey();
 
-  // Current month exists
-  if (store[monthKey]) {
-    return store[monthKey].data;
+  // An explicit month lookup must never fall back to a different month. This
+  // prevents a new month from being mistaken for an existing statement.
+  if (store[requestedMonthKey]) {
+    return store[requestedMonthKey].data;
   }
 
-  // Fallback to latest available statement
+  if (monthKey) {
+    return null;
+  }
+
+  // Calls without a key may use the latest saved statement for dashboard views.
   const reviews = Object.values(store).sort(
     (a, b) => b.monthKey.localeCompare(a.monthKey)
   );

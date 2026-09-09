@@ -8,6 +8,7 @@
 import { parseAmount } from "./spending-analytics";
 import type { MonthlyFinancialStatement } from "./monthly-review";
 import { getAllMonthlyReviews } from "./storage";
+import { formatINR } from "./financial-engine";
 
 // =========================================
 // DATA MODEL
@@ -110,6 +111,22 @@ export type CFONotes = {
   warning?: string;
 };
 
+export type MoMHeadComparison = {
+  head: string;
+  currentAmount: number;
+  previousAmount: number;
+  difference: number;
+  percentageChange: number;
+  isIncrease: boolean;
+};
+
+export type MoMComparisonSummary = {
+  hasPreviousMonth: boolean;
+  comparisons: MoMHeadComparison[];
+  cannibalizationDetected: boolean;
+  cannibalizationMessage?: string;
+};
+
 export type WealthAllocationData = {
   wealthAllocation: WealthAllocation;
   allocationTargets: WealthAllocationTargets;
@@ -121,6 +138,7 @@ export type WealthAllocationData = {
   wealthTrendData: WealthTrendData[];
   monthlyWealthScore: number;
   cfoNotes: CFONotes;
+  momComparison: MoMComparisonSummary;
 };
 
 // =========================================
@@ -161,7 +179,6 @@ export function calculateWealthAllocation(
   const cashAllocation = statement.cashAllocation;
   const expenses = statement.expenses;
 
-  // Calculate total salary
   const salaryReceived =
     safeParseAmount(income.salaryInHand) +
     safeParseAmount(income.daAllowances) +
@@ -172,10 +189,8 @@ export function calculateWealthAllocation(
     safeParseAmount(income.rentalIncome) +
     safeParseAmount(income.otherIncome);
 
-  // Calculate Wealth Creation (investments)
   const wealthCreation = safeParseAmount(cashAllocation.investments);
 
-  // Calculate Essential Living (household + family)
   const household = expenses.household;
   const family = expenses.family;
   const essentialLiving =
@@ -191,7 +206,6 @@ export function calculateWealthAllocation(
     safeParseAmount(family.children) +
     safeParseAmount(family.gifts);
 
-  // Calculate Lifestyle (lifestyle + travel + misc)
   const lifestyleExp = expenses.lifestyle;
   const travel = expenses.travel;
   const misc = expenses.misc;
@@ -210,63 +224,28 @@ export function calculateWealthAllocation(
     safeParseAmount(misc.repairs) +
     safeParseAmount(misc.other);
 
-  // Calculate Safety (emergency fund + loan payments)
   const safety =
     safeParseAmount(cashAllocation.emergencyFund) +
     safeParseAmount(cashAllocation.homeLoanPrepayment);
 
-  // Calculate Unallocated (cash remaining)
   const unallocated = safeParseAmount(cashAllocation.cashRemaining);
 
-  // Calculate allocation percentage
   const totalAllocated = wealthCreation + essentialLiving + lifestyle + safety + unallocated;
   const allocationPercentage = salaryReceived > 0 ? (totalAllocated / salaryReceived) * 100 : 0;
-  const isComplete = Math.abs(allocationPercentage - 100) < 1; // Allow 1% tolerance
+  const isComplete = Math.abs(allocationPercentage - 100) < 1;
 
-  // Calculate percentages for each bucket
   const wealthCreationPercentage = salaryReceived > 0 ? (wealthCreation / salaryReceived) * 100 : 0;
   const essentialLivingPercentage = salaryReceived > 0 ? (essentialLiving / salaryReceived) * 100 : 0;
   const lifestylePercentage = salaryReceived > 0 ? (lifestyle / salaryReceived) * 100 : 0;
   const safetyPercentage = salaryReceived > 0 ? (safety / salaryReceived) * 100 : 0;
   const unallocatedPercentage = salaryReceived > 0 ? (unallocated / salaryReceived) * 100 : 0;
 
-  // Create buckets with targets
   const buckets: WealthBucket[] = [
-    {
-      name: "Wealth Creation",
-      amount: wealthCreation,
-      percentage: wealthCreationPercentage,
-      targetPercentage: targets.wealthCreation,
-      color: "bg-emerald-500",
-    },
-    {
-      name: "Essential Living",
-      amount: essentialLiving,
-      percentage: essentialLivingPercentage,
-      targetPercentage: targets.essentialLiving,
-      color: "bg-blue-500",
-    },
-    {
-      name: "Lifestyle",
-      amount: lifestyle,
-      percentage: lifestylePercentage,
-      targetPercentage: targets.lifestyle,
-      color: "bg-violet-500",
-    },
-    {
-      name: "Safety",
-      amount: safety,
-      percentage: safetyPercentage,
-      targetPercentage: targets.safety,
-      color: "bg-amber-500",
-    },
-    {
-      name: "Unallocated",
-      amount: unallocated,
-      percentage: unallocatedPercentage,
-      targetPercentage: targets.unallocated,
-      color: "bg-zinc-500",
-    },
+    { name: "Wealth Creation", amount: wealthCreation, percentage: wealthCreationPercentage, targetPercentage: targets.wealthCreation, color: "bg-emerald-500" },
+    { name: "Essential Living", amount: essentialLiving, percentage: essentialLivingPercentage, targetPercentage: targets.essentialLiving, color: "bg-blue-500" },
+    { name: "Lifestyle", amount: lifestyle, percentage: lifestylePercentage, targetPercentage: targets.lifestyle, color: "bg-violet-500" },
+    { name: "Safety", amount: safety, percentage: safetyPercentage, targetPercentage: targets.safety, color: "bg-amber-500" },
+    { name: "Unallocated", amount: unallocated, percentage: unallocatedPercentage, targetPercentage: targets.unallocated, color: "bg-zinc-500" },
   ];
 
   return {
@@ -293,24 +272,16 @@ export function validateAllocation(
   const warnings: string[] = [];
   const recommendations: string[] = [];
 
-  // Check each bucket
   for (const bucket of allocation.buckets) {
     const target = targets[bucket.name.toLowerCase().replace(" ", "") as keyof WealthAllocationTargets];
     const deviation = bucket.percentage - target;
 
-    deviations.push({
-      bucket: bucket.name,
-      actual: bucket.percentage,
-      target,
-      deviation,
-    });
+    deviations.push({ bucket: bucket.name, actual: bucket.percentage, target, deviation });
 
-    // Generate warnings for significant deviations
     if (Math.abs(deviation) > 10) {
       warnings.push(`${bucket.name} is ${deviation > 0 ? "above" : "below"} target by ${Math.abs(deviation).toFixed(1)}%`);
     }
 
-    // Generate recommendations
     if (bucket.name === "Wealth Creation" && deviation < -10) {
       recommendations.push("Consider increasing wealth creation to meet long-term goals");
     }
@@ -322,15 +293,8 @@ export function validateAllocation(
     }
   }
 
-  // Overall validation
   const isValid = warnings.length === 0 && allocation.isComplete;
-
-  return {
-    isValid,
-    deviations,
-    warnings,
-    recommendations,
-  };
+  return { isValid, deviations, warnings, recommendations };
 }
 
 /**
@@ -343,10 +307,8 @@ export function calculateLiquidityPosition(statement: MonthlyFinancialStatement)
   const emergencyFund = safeParseAmount(assets.emergencyFund);
   const savingsAccount = safeParseAmount(assets.savingsAccount);
   const cash = safeParseAmount(assets.cash);
-
   const totalLiquidAssets = emergencyFund + savingsAccount + cash;
 
-  // Calculate monthly essential expenses
   const household = expenses.household;
   const family = expenses.family;
   const monthlyExpenses =
@@ -364,14 +326,7 @@ export function calculateLiquidityPosition(statement: MonthlyFinancialStatement)
 
   const monthsOfExpensesCovered = monthlyExpenses > 0 ? totalLiquidAssets / monthlyExpenses : 0;
 
-  return {
-    emergencyFund,
-    savingsAccount,
-    cash,
-    totalLiquidAssets,
-    monthlyExpenses,
-    monthsOfExpensesCovered,
-  };
+  return { emergencyFund, savingsAccount, cash, totalLiquidAssets, monthlyExpenses, monthsOfExpensesCovered };
 }
 
 /**
@@ -394,15 +349,7 @@ export function calculateWealthAllocationBreakdown(statement: MonthlyFinancialSt
 
   const totalWealthCreation = mutualFunds + ppf + nps + fd + gold + otherInvestments;
 
-  return {
-    mutualFunds,
-    ppf,
-    nps,
-    fd,
-    gold,
-    otherInvestments,
-    totalWealthCreation,
-  };
+  return { mutualFunds, ppf, nps, fd, gold, otherInvestments, totalWealthCreation };
 }
 
 /**
@@ -416,6 +363,64 @@ export function calculateMonthlyWealthSummary(allocation: WealthAllocation): Mon
     lifestyleSpent: allocation.lifestyle,
     safetyAllocated: allocation.safety,
     unallocated: allocation.unallocated,
+  };
+}
+
+/**
+ * Calculate Month-over-Month comparison between current statement and previous statement
+ */
+export function calculateMoMComparison(
+  currentStatement: MonthlyFinancialStatement,
+  previousStatement?: MonthlyFinancialStatement
+): MoMComparisonSummary {
+  if (!previousStatement) {
+    return {
+      hasPreviousMonth: false,
+      comparisons: [],
+      cannibalizationDetected: false,
+    };
+  }
+
+  const targets = getDefaultAllocationTargets();
+  const currentAlloc = calculateWealthAllocation(currentStatement, targets);
+  const previousAlloc = calculateWealthAllocation(previousStatement, targets);
+
+  const heads = [
+    { name: "Wealth Creation (Investments)", curr: currentAlloc.wealthCreation, prev: previousAlloc.wealthCreation },
+    { name: "Essential Living", curr: currentAlloc.essentialLiving, prev: previousAlloc.essentialLiving },
+    { name: "Lifestyle (Shopping/Discretionary)", curr: currentAlloc.lifestyle, prev: previousAlloc.lifestyle },
+    { name: "Safety & Emergency", curr: currentAlloc.safety, prev: previousAlloc.safety },
+    { name: "Unallocated Cash", curr: currentAlloc.unallocated, prev: previousAlloc.unallocated },
+  ];
+
+  const comparisons: MoMHeadComparison[] = heads.map((h) => {
+    const difference = h.curr - h.prev;
+    const percentageChange = h.prev > 0 ? Number(((difference / h.prev) * 100).toFixed(1)) : 0;
+    return {
+      head: h.name,
+      currentAmount: h.curr,
+      previousAmount: h.prev,
+      difference,
+      percentageChange,
+      isIncrease: difference >= 0,
+    };
+  });
+
+  const lifestyleComp = comparisons.find((c) => c.head.includes("Lifestyle"))!;
+  const wealthComp = comparisons.find((c) => c.head.includes("Wealth Creation"))!;
+  
+  const cannibalizationDetected = lifestyleComp.difference > 0 && wealthComp.difference < 0;
+  let cannibalizationMessage;
+
+  if (cannibalizationDetected) {
+    cannibalizationMessage = `Warning: Lifestyle spending increased by ${formatINR(lifestyleComp.difference)}, which directly reduced your Wealth Creation by ${formatINR(Math.abs(wealthComp.difference))}.`;
+  }
+
+  return {
+    hasPreviousMonth: true,
+    comparisons,
+    cannibalizationDetected,
+    cannibalizationMessage,
   };
 }
 
@@ -464,7 +469,7 @@ export function calculateLifetimeWealthSummary(allStatements: MonthlyFinancialSt
 }
 
 /**
- * Calculate wealth trend data (for charts later)
+ * Calculate wealth trend data
  */
 export function calculateWealthTrendData(allStatements: MonthlyFinancialStatement[]): WealthTrendData[] {
   const defaultTargets = getDefaultAllocationTargets();
@@ -501,38 +506,23 @@ export function calculateMonthlyWealthScore(
 ): number {
   let score = 0;
 
-  // Wealth Creation vs target (weight: 25)
   const wealthCreationDeviation = Math.abs(allocation.buckets[0].percentage - allocation.buckets[0].targetPercentage);
-  const wealthCreationScore = Math.max(0, 25 - (wealthCreationDeviation / 2));
-  score += wealthCreationScore;
+  score += Math.max(0, 25 - (wealthCreationDeviation / 2));
 
-  // Essential Living vs target (weight: 20)
   const essentialLivingDeviation = Math.abs(allocation.buckets[1].percentage - allocation.buckets[1].targetPercentage);
-  const essentialLivingScore = Math.max(0, 20 - (essentialLivingDeviation / 2));
-  score += essentialLivingScore;
+  score += Math.max(0, 20 - (essentialLivingDeviation / 2));
 
-  // Lifestyle vs target (weight: 15)
   const lifestyleDeviation = Math.abs(allocation.buckets[2].percentage - allocation.buckets[2].targetPercentage);
-  const lifestyleScore = Math.max(0, 15 - (lifestyleDeviation / 2));
-  score += lifestyleScore;
+  score += Math.max(0, 15 - (lifestyleDeviation / 2));
 
-  // Safety vs target (weight: 20)
   const safetyDeviation = Math.abs(allocation.buckets[3].percentage - allocation.buckets[3].targetPercentage);
-  const safetyScore = Math.max(0, 20 - (safetyDeviation / 2));
-  score += safetyScore;
+  score += Math.max(0, 20 - (safetyDeviation / 2));
 
-  // Unallocated vs target (weight: 15)
   const unallocatedDeviation = Math.abs(allocation.buckets[4].percentage - allocation.buckets[4].targetPercentage);
-  const unallocatedScore = Math.max(0, 15 - (unallocatedDeviation / 2));
-  score += unallocatedScore;
+  score += Math.max(0, 15 - (unallocatedDeviation / 2));
 
-  // Liquidity bonus (up to 5 points)
-  const liquidityBonus = Math.min(5, liquidity.monthsOfExpensesCovered);
-  score += liquidityBonus;
-
-  // Validation bonus (up to 5 points)
-  const validationBonus = validation.isValid ? 5 : 0;
-  score += validationBonus;
+  score += Math.min(5, liquidity.monthsOfExpensesCovered);
+  score += validation.isValid ? 5 : 0;
 
   return Math.min(Math.round(score), 100);
 }
@@ -545,14 +535,12 @@ export function generateCFONotes(
   validation: AllocationValidation,
   score: number
 ): CFONotes {
-  // Determine allocation health
   let allocationHealth: CFONotes["allocationHealth"];
   if (score >= 80) allocationHealth = "Excellent";
   else if (score >= 60) allocationHealth = "Good";
   else if (score >= 40) allocationHealth = "Fair";
   else allocationHealth = "Poor";
 
-  // Generate primary recommendation
   let primaryRecommendation = "";
   if (allocation.wealthCreation / allocation.salaryReceived < 0.25) {
     primaryRecommendation = "Increase wealth creation to at least 25% of salary for long-term growth";
@@ -564,7 +552,6 @@ export function generateCFONotes(
     primaryRecommendation = "Maintain current allocation strategy";
   }
 
-  // Generate secondary recommendation
   let secondaryRecommendation = "";
   if (validation.warnings.length > 0) {
     secondaryRecommendation = `Address ${validation.warnings.length} allocation deviation(s) to optimize wealth building`;
@@ -572,18 +559,12 @@ export function generateCFONotes(
     secondaryRecommendation = "Continue monitoring allocation ratios monthly";
   }
 
-  // Add warning if needed
   let warning: string | undefined;
   if (!allocation.isComplete) {
     warning = `Cash allocation incomplete: ${allocation.allocationPercentage.toFixed(1)}% allocated`;
   }
 
-  return {
-    allocationHealth,
-    primaryRecommendation,
-    secondaryRecommendation,
-    warning,
-  };
+  return { allocationHealth, primaryRecommendation, secondaryRecommendation, warning };
 }
 
 /**
@@ -597,19 +578,31 @@ export function getWealthAllocationData(
   const storedStatements = getAllMonthlyReviews();
   const statements = allStatements || storedStatements.map((s) => s.data);
 
+  // Sort statements chronologically if possible to find the previous one accurately
+  const sortedStatements = [...statements].sort((a, b) => {
+    if (a.year !== b.year) return a.year - b.year;
+    return a.month - b.month;
+  });
+
+  const currentIndex = sortedStatements.findIndex(
+    (s) => s.year === statement.year && s.month === statement.month
+  );
+  const previousStatement = currentIndex > 0 ? sortedStatements[currentIndex - 1] : undefined;
+
   const wealthAllocation = calculateWealthAllocation(statement, targets);
   const allocationValidation = validateAllocation(wealthAllocation, targets);
   const liquidityPosition = calculateLiquidityPosition(statement);
   const wealthAllocationBreakdown = calculateWealthAllocationBreakdown(statement);
   const monthlyWealthSummary = calculateMonthlyWealthSummary(wealthAllocation);
-  const lifetimeWealthSummary = calculateLifetimeWealthSummary(statements);
-  const wealthTrendData = calculateWealthTrendData(statements);
+  const lifetimeWealthSummary = calculateLifetimeWealthSummary(sortedStatements);
+  const wealthTrendData = calculateWealthTrendData(sortedStatements);
   const monthlyWealthScore = calculateMonthlyWealthScore(
     wealthAllocation,
     allocationValidation,
     liquidityPosition
   );
   const cfoNotes = generateCFONotes(wealthAllocation, allocationValidation, monthlyWealthScore);
+  const momComparison = calculateMoMComparison(statement, previousStatement);
 
   return {
     wealthAllocation,
@@ -622,5 +615,6 @@ export function getWealthAllocationData(
     wealthTrendData,
     monthlyWealthScore,
     cfoNotes,
+    momComparison,
   };
 }

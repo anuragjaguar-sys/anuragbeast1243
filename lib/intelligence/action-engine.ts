@@ -1,4 +1,4 @@
-import { getDecisionPlan } from "@/lib/intelligence/decision-engine";
+import { getDecisionPlan, DecisionPlan } from "@/lib/intelligence/decision-engine";
 
 export type ActionStatus = "Pending" | "Active" | "Completed";
 
@@ -19,18 +19,12 @@ function makeId(prefix = "act") {
     .slice(2, 8)}`;
 }
 
-export function generateActions(
-  plan = getDecisionPlan()
-): AthenaAction[] {
+export function generateActions(plan: DecisionPlan): AthenaAction[] {
   const actions: AthenaAction[] = [];
 
   if (!plan) return actions;
 
   switch (plan.phase) {
-    // =========================================
-    // BEHAVIOURAL PROTECTION
-    // =========================================
-
     case "Behavioural Protection":
       actions.push({
         id: makeId("behaviour"),
@@ -38,14 +32,9 @@ export function generateActions(
         category: "Behaviour",
         priority: "High",
         status: "Pending",
-        impact:
-          "Protects the recovery streak and prevents further trading-related capital destruction",
+        impact: "Protects the recovery streak and prevents further trading-related capital destruction",
       });
       break;
-
-    // =========================================
-    // FINANCIAL SAFETY
-    // =========================================
 
     case "Financial Safety":
       actions.push({
@@ -54,14 +43,9 @@ export function generateActions(
         category: "Safety",
         priority: "High",
         status: "Pending",
-        impact:
-          "Protects liquidity and prevents forced asset sales during income shocks",
+        impact: "Protects liquidity and prevents forced asset sales during income shocks",
       });
       break;
-
-    // =========================================
-    // DEBT REDUCTION
-    // =========================================
 
     case "Debt Reduction":
       actions.push({
@@ -70,14 +54,9 @@ export function generateActions(
         category: "Debt",
         priority: "High",
         status: "Pending",
-        impact:
-          "After closure redirect EMI amount into investments",
+        impact: "After closure redirect EMI amount into investments",
       });
       break;
-
-    // =========================================
-    // RETIREMENT OPTIMISATION
-    // =========================================
 
     case "Retirement Optimisation":
       actions.push({
@@ -86,14 +65,9 @@ export function generateActions(
         category: "Wealth",
         priority: "High",
         status: "Pending",
-        impact:
-          "Increase SIPs or contributions to close retirement funding gap",
+        impact: "Increase SIPs or contributions to close retirement funding gap",
       });
       break;
-
-    // =========================================
-    // WEALTH ACCELERATION
-    // =========================================
 
     case "Wealth Acceleration":
     default:
@@ -103,8 +77,7 @@ export function generateActions(
         category: "Wealth",
         priority: "Medium",
         status: "Pending",
-        impact:
-          "Gradually increase equity allocation and tax-efficient investments",
+        impact: "Gradually increase equity allocation and tax-efficient investments",
       });
       break;
   }
@@ -123,33 +96,25 @@ export function getTopPriorityAction(
     Low: 1,
   };
 
-  const unfinished = actions.filter(
-    (a) => a.status !== "Completed"
-  );
+  const unfinished = actions.filter((a) => a.status !== "Completed");
 
   if (unfinished.length === 0) return null;
 
   unfinished.sort((a, b) => {
-    const p =
-      priorityOrder[b.priority] -
-      priorityOrder[a.priority];
+    const p = priorityOrder[b.priority] - priorityOrder[a.priority];
 
     if (p !== 0) return p;
 
-    // Prefer Active over Pending
     const statusOrder: Record<string, number> = {
       Active: 2,
       Pending: 1,
       Completed: 0,
     };
 
-    const s =
-      statusOrder[b.status] -
-      statusOrder[a.status];
+    const s = statusOrder[b.status] - statusOrder[a.status];
 
     if (s !== 0) return s;
 
-    // Fallback: alphabetical by id
     return a.id.localeCompare(b.id);
   });
 

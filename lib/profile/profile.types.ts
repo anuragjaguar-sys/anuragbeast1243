@@ -6,17 +6,10 @@ export interface PersonalProfile {
 
 export interface IncomeProfile {
   monthlySalary: number;
-
-  // Amount invested every month
-  monthlyInvestment: number;
-
-  // Annual salary growth (stored as decimal, e.g. 0.05 = 5%)
-  annualIncrement: number;
-
-  // Expected monthly pension after retirement
-  monthlyPension: number;
+  monthlyInvestment: number; // Amount invested every month
+  annualIncrement: number;   // Annual salary growth (stored as decimal, e.g. 0.05 = 5%)
+  monthlyPension: number;    // Expected monthly pension after retirement
 }
-
 
 export interface AssetProfile {
   mutualFunds: number;
@@ -39,19 +32,13 @@ export interface LiabilityProfile {
 }
 
 export interface AssumptionProfile {
-  // Investment Returns
   equityReturn: number;
   debtReturn: number;
-
-  // Economic Assumptions
   inflationRate: number;
   withdrawalRate: number;
-
-  // Growth Assumptions
   salaryIncrement: number;
   sipIncrease: number;
 }
-
 
 export interface GoalProfile {
   desiredMonthlyRetirementIncome: number;
@@ -59,7 +46,28 @@ export interface GoalProfile {
   emergencyFundMonths: number;
 }
 
+// NEW: Partner Profile for Household Mode
+export interface PartnerProfile {
+  name: string;
+  currentAge: number;
+  retirementAge: number;
+  
+  // Income
+  monthlySalary: number;
+  monthlyInvestment: number;
+  monthlyPension: number;
+  
+  // Assets
+  mutualFunds: number;
+  ppf: number;
+  epf: number;
+  nps: number;
+}
+
 export interface FinancialProfile {
+  householdMode: boolean;
+  partner?: PartnerProfile;
+  
   personal: PersonalProfile;
   income: IncomeProfile;
   assets: AssetProfile;

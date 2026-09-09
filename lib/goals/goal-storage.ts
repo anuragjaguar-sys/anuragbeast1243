@@ -1,37 +1,34 @@
+import { CloudSyncService } from "@/lib/core/sync-service";
 // =========================================
-// ATHENA Goal Storage
+// ATHENA Goal Storage (Unified via StorageManager)
 // =========================================
 
 import type { Goal } from "./types";
+import { StorageManager } from "@/lib/core/storage-manager";
 
-const STORAGE_KEY = "athena-goals";
+const PRIMARY_KEY = StorageManager.KEYS.GOALS;
+const LEGACY_KEY = "athena-goals";
 
 // ----------------------------------------
-// Load Goals
+// Load Goals (with legacy fallback migration)
 // ----------------------------------------
 
 export function loadGoals(): Goal[] {
-  if (typeof window === "undefined") {
-    return [];
+  // Check primary unified key first
+  const goals = StorageManager.get<Goal[]>(PRIMARY_KEY, []);
+  if (Array.isArray(goals) && goals.length > 0) {
+    return goals;
   }
 
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (!saved) {
-      return [];
-    }
-
-    const parsed = JSON.parse(saved);
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed as Goal[];
-  } catch {
-    return [];
+  // Fallback check for legacy storage key
+  const legacyGoals = StorageManager.get<Goal[]>(LEGACY_KEY, []);
+  if (Array.isArray(legacyGoals) && legacyGoals.length > 0) {
+    // Automatically migrate legacy goals to unified key
+    StorageManager.set(PRIMARY_KEY, legacyGoals);
+    return legacyGoals;
   }
+
+  return [];
 }
 
 // ----------------------------------------
@@ -39,48 +36,28 @@ export function loadGoals(): Goal[] {
 // ----------------------------------------
 
 export function saveGoals(goals: Goal[]): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(goals)
-  );
+  StorageManager.set(PRIMARY_KEY, goals);
+  void CloudSyncService.pushStore("goals", goals);
 }
 
 // ----------------------------------------
 // Get Single Goal
 // ----------------------------------------
 
-export function getGoal(
-  goalId: string
-): Goal | null {
+export function getGoal(goalId: string): Goal | null {
   const goals = loadGoals();
-
-  return (
-    goals.find(
-      (goal) => goal.id === goalId
-    ) ?? null
-  );
+  return goals.find((goal) => goal.id === goalId) ?? null;
 }
 
 // ----------------------------------------
 // Update Single Goal
 // ----------------------------------------
 
-export function updateGoal(
-  updatedGoal: Goal
-): void {
+export function updateGoal(updatedGoal: Goal): void {
   const goals = loadGoals();
-
-  const updatedGoals = goals.map(
-    (goal) =>
-      goal.id === updatedGoal.id
-        ? updatedGoal
-        : goal
+  const updatedGoals = goals.map((goal) =>
+    goal.id === updatedGoal.id ? updatedGoal : goal
   );
-
   saveGoals(updatedGoals);
 }
 
@@ -88,16 +65,9 @@ export function updateGoal(
 // Delete Single Goal
 // ----------------------------------------
 
-export function deleteGoal(
-  goalId: string
-): void {
+export function deleteGoal(goalId: string): void {
   const goals = loadGoals();
-
-  saveGoals(
-    goals.filter(
-      (goal) => goal.id !== goalId
-    )
-  );
+  saveGoals(goals.filter((goal) => goal.id !== goalId));
 }
 
 // ----------------------------------------
@@ -105,9 +75,6 @@ export function deleteGoal(
 // ----------------------------------------
 
 export function clearGoals(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  localStorage.removeItem(STORAGE_KEY);
+  StorageManager.remove(PRIMARY_KEY);
+  StorageManager.remove(LEGACY_KEY);
 }

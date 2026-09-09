@@ -2,8 +2,9 @@ import { loadMonthlyReview } from "@/lib/storage";
 import { getFinancialMetrics } from "@/lib/financial-engine";
 import { getCFOInsight } from "@/lib/intelligence/cfo-engine";
 import { getDecisionPlan } from "@/lib/intelligence/decision-engine";
+import type { FinancialProfile } from "@/lib/profile/profile.types";
 
-export interface MonthlyCFOReview {
+export type MonthlyCFOReview = {
   month: string;
   overallStatus: "Excellent" | "Good" | "Needs Attention";
   strength: string;
@@ -12,78 +13,118 @@ export interface MonthlyCFOReview {
   savingScore: number;
   behaviourScore: number;
   recommendation: string;
-}
+};
 
-/**
- * Generate a Monthly CFO review by composing existing engines.
- * This engine only reads existing systems and does not persist data.
- */
-export function getMonthlyCFOReview(): MonthlyCFOReview {
-  const statement = loadMonthlyReview();
-  const metrics = getFinancialMetrics();
-  const cfo = getCFOInsight();
-  const plan = getDecisionPlan();
+export type MonthlyScoreInput = {
+  fire54Score?: number;
+  savingsRate?: number;
+  investmentRate?: number;
+  emergencyFundProgress?: number;
+};
 
-  const monthLabel = statement ? `${statement.month}/${statement.year}` : new Date().toLocaleString("en-IN", { month: "short", year: "numeric" });
+export type MonthlyScoresResult = {
+  overallStatus: "Excellent" | "Good" | "Needs Attention";
+  investmentScore: number;
+  savingScore: number;
+  behaviourScore: number;
+  strength?: string;
+  risks: string[];
+};
 
-  // Default buckets
-  let overallStatus: MonthlyCFOReview["overallStatus"] = "Needs Attention";
-  let strength = "";
-  let risk = "";
-  let investmentScore = 0;
-  let savingScore = 0;
-  let behaviourScore = 0;
+export function calculateMonthlyScores(input: MonthlyScoreInput): MonthlyScoresResult {
+  const {
+    fire54Score = 0,
+    savingsRate = 0,
+    investmentRate = 0,
+    emergencyFundProgress = 0,
+  } = input;
 
-  // Derive overall status from fire54Score when available
-  if (metrics) {
-    if (metrics.fire54Score >= 80) overallStatus = "Excellent";
-    else if (metrics.fire54Score >= 60) overallStatus = "Good";
-    else overallStatus = "Needs Attention";
+  let overallStatus: MonthlyScoresResult["overallStatus"] = "Needs Attention";
+  if (fire54Score >= 80) overallStatus = "Excellent";
+  else if (fire54Score >= 60) overallStatus = "Good";
 
-    // Savings analysis
-    const savingsRate = Number(metrics.savingsRate || 0);
-    if (savingsRate >= 50) {
-      strength = "Excellent savings discipline";
-    } else if (savingsRate >= 30) {
-      strength = "Good savings behaviour";
-    }
+  const risks: string[] = [];
+  let strength: string | undefined;
 
-    if (savingsRate < 30) {
-      risk = risk ? `${risk}; Low savings rate` : "Low savings rate";
-    }
-
-    // Investment analysis
-    const investmentRate = Number(metrics.investmentRate || 0);
-    // Scale investmentScore: 0-100 where 30% -> 90, 40%+ -> 100
-    if (investmentRate >= 40) investmentScore = 100;
-    else investmentScore = Math.min(100, Math.round((investmentRate / 30) * 90));
-
-    // Saving score proportional to savingsRate (scale to 0-100, 50% -> 100)
-    savingScore = Math.min(100, Math.round((savingsRate / 50) * 100));
-
-    // Emergency fund check
-    const emergency = Number(metrics.emergencyFundProgress || 0);
-    if (emergency < 100) {
-      risk = risk ? `${risk}; Emergency fund incomplete` : "Emergency fund incomplete";
-    }
-
-    // Behaviour score: Use behaviour engine if available. Fallback to a proxy derived from savings/investment discipline.
-    // The repo contains a behaviour engine (calculateFinancialDisciplineScore) but it requires behavioural streak input which
-    // is not always available here. Use a pragmatic proxy: combine savings + investment rates.
-    behaviourScore = Math.min(100, Math.round((savingScore * 0.6 + investmentScore * 0.4)));
+  if (savingsRate >= 50) {
+    strength = "Excellent savings discipline";
+  } else if (savingsRate >= 30) {
+    strength = "Good savings behaviour";
+  } else {
+    risks.push("Low savings rate");
   }
 
-  // Retirement guidance — surface CFO & Decision Plan recommendations
-  let recommendation = cfo?.recommendedAction || plan?.nextAction || "Maintain current discipline and review next month.";
+  let investmentScore = 0;
+  if (investmentRate >= 40) {
+    investmentScore = 100;
+  } else {
+    investmentScore = Math.min(100, Math.round((investmentRate / 30) * 90));
+  }
+
+  const savingScore = Math.min(100, Math.round((savingsRate / 50) * 100));
+
+  if (emergencyFundProgress < 100) {
+    risks.push("Emergency fund incomplete");
+  }
+
+  const behaviourScore = Math.min(100, Math.round(savingScore * 0.6 + investmentScore * 0.4));
 
   return {
-    month: monthLabel,
     overallStatus,
-    strength: strength || cfo?.headline || "Consistent financial tracking",
-    risk: risk || cfo?.primaryIssue || "No immediate risks identified",
     investmentScore,
     savingScore,
     behaviourScore,
+    strength,
+    risks,
+  };
+}
+
+export function getMonthlyCFOReview(profile: FinancialProfile): MonthlyCFOReview {
+  const statement = loadMonthlyReview();
+  const metrics = getFinancialMetrics();
+  const cfo = getCFOInsight(profile);
+  const plan = getDecisionPlan(profile);
+
+  const monthLabel = statement
+    ? `${statement.month}/${statement.year}`
+    : new Date().toLocaleString("en-IN", { month: "short", year: "numeric" });
+
+  const scoreResults = metrics
+    ? calculateMonthlyScores({
+        fire54Score: metrics.fire54Score,
+        savingsRate: Number(metrics.savingsRate || 0),
+        investmentRate: Number(metrics.investmentRate || 0),
+        emergencyFundProgress: Number(metrics.emergencyFundProgress || 0),
+      })
+    : {
+        overallStatus: "Needs Attention" as const,
+        investmentScore: 0,
+        savingScore: 0,
+        behaviourScore: 0,
+        risks: [],
+        strength: undefined,
+      };
+
+  const riskList = [...scoreResults.risks];
+  let recommendation =
+    cfo?.recommendedAction || plan?.nextAction || "Maintain current discipline and review next month.";
+
+  if (statement?.month === 12) {
+    riskList.push("January SIP step-up decision due");
+    recommendation =
+      "January SIP step-up coming: decide whether to increase your mutual-fund SIP by 10%, 15%, or 20%, and record the plan in January.";
+  }
+
+  const riskSummary = riskList.length > 0 ? riskList.join("; ") : cfo?.primaryIssue || "No immediate risks identified";
+
+  return {
+    month: monthLabel,
+    overallStatus: scoreResults.overallStatus,
+    strength: scoreResults.strength || cfo?.headline || "Consistent financial tracking",
+    risk: riskSummary,
+    investmentScore: scoreResults.investmentScore,
+    savingScore: scoreResults.savingScore,
+    behaviourScore: scoreResults.behaviourScore,
     recommendation,
   };
 }

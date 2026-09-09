@@ -1,87 +1,223 @@
-import { getFinancialProfile } from "./profile-engine";
-import { RetirementAssumptions } from "@/lib/retirement/types";
+import type { FinancialProfile } from "./profile.types";
+import type { RetirementAssumptions } from "@/lib/retirement/types";
 import { getAssets, getPortfolio } from "@/lib/investments";
 import { getGoals } from "@/lib/goals";
-import { getAllMonthlyReviews } from "@/lib/storage";
+import { DEFAULT_FINANCIAL_PROFILE } from "./profile";
 
-export function getRetirementAssumptionsFromProfile(): RetirementAssumptions {
-  const profile = getFinancialProfile();
+/**
+ * Convert the Financial Profile + canonical Portfolio + Goals
+ * into the assumptions required by the Retirement Engine.
+ *
+ * Important architecture rule:
+ * - Profile owns assumptions and income inputs.
+ * - Portfolio owns current asset values.
+ * - Goals own retirement targets when explicitly configured.
+ * - Monthly reviews record historical behaviour.
+ *
+ * Historical SIP changes are NOT automatically treated as a
+ * permanent future annual SIP step-up.
+ */
+export function getRetirementAssumptionsFromProfile(
+  profile: FinancialProfile | Partial<FinancialProfile> | null | undefined
+): RetirementAssumptions {
+  /**
+   * Normalize legacy / partial profiles so the retirement engine
+   * never receives undefined nested objects.
+   */
+  const safeProfile = {
+    ...DEFAULT_FINANCIAL_PROFILE,
+    ...(profile ?? {}),
+
+    personal: {
+      ...DEFAULT_FINANCIAL_PROFILE.personal,
+      ...profile?.personal,
+    },
+
+    income: {
+      ...DEFAULT_FINANCIAL_PROFILE.income,
+      ...profile?.income,
+    },
+
+    assets: {
+      ...DEFAULT_FINANCIAL_PROFILE.assets,
+      ...profile?.assets,
+    },
+
+    liabilities: {
+      ...DEFAULT_FINANCIAL_PROFILE.liabilities,
+      ...profile?.liabilities,
+    },
+
+    assumptions: {
+      ...DEFAULT_FINANCIAL_PROFILE.assumptions,
+      ...profile?.assumptions,
+    },
+
+    goals: {
+      ...DEFAULT_FINANCIAL_PROFILE.goals,
+      ...profile?.goals,
+    },
+  };
+
+  /**
+   * Retirement target:
+   *
+   * Prefer an explicitly configured long-term Retirement Goal.
+   * Otherwise use the Financial Profile retirement income target.
+   */
   const retirementGoal = getGoals().find(
-    (goal) => goal.category === "Retirement" && goal.timeframe === "Long Term"
+    (goal) =>
+      goal.category === "Retirement" &&
+      goal.timeframe === "Long Term"
   );
+
   const assets = getAssets(getPortfolio());
-  const latestSipReview = getAllMonthlyReviews()
-    .map((entry) => entry.data.sipAnnualReview)
-    .find(
-      (review) =>
-        review?.status === "Increased" ||
-        review?.status === "Unchanged"
-    );
-  const valueForCategory = (category: string) =>
+
+  /**
+   * Portfolio is the canonical source for current asset values.
+   *
+   * We deliberately use currentValue rather than investedAmount:
+   * currentValue represents today's actual corpus/market value.
+   */
+  const valueForCategory = (category: string): number =>
     assets
       .filter((asset) => asset.category === category)
-      .reduce((sum, asset) => sum + asset.currentValue, 0);
+      .reduce(
+        (sum, asset) => sum + Number(asset.currentValue || 0),
+        0
+      );
 
-  const currentCorpus =
-    valueForCategory("Mutual Fund") +
-    valueForCategory("PPF") +
-    valueForCategory("EPF") +
-    valueForCategory("NPS");
+  const mutualFunds = valueForCategory("Mutual Fund");
+  const ppf = valueForCategory("PPF");
+  const epf = valueForCategory("EPF");
+  const nps = valueForCategory("NPS");
 
-// Determine desired monthly income with correct precedence:
-// 1. Long-term retirement goal's desiredMonthlyIncome (if present and not mistakenly set to monthly pension)
-// 2. Financial profile's goals.desiredMonthlyRetirementIncome
-const goalDesired = retirementGoal?.desiredMonthlyIncome ?? null;
-const profileDesired = profile.goals.desiredMonthlyRetirementIncome;
-const monthlyPension = profile.income.monthlyPension;
+  /**
+   * Retirement corpus currently consists of:
+   * Mutual Funds + PPF + EPF + NPS
+   */
+  const currentCorpus = mutualFunds + ppf + epf + nps;
 
-let desiredMonthlyIncome = profileDesired;
+  /**
+   * Retirement income target precedence:
+   *
+   * 1. Explicit Retirement Goal target
+   * 2. Financial Profile target
+   *
+   * Do not confuse monthly pension with desired retirement
+   * spending/income target.
+   */
+  const goalDesired = retirementGoal?.desiredMonthlyIncome ?? null;
+  const profileDesired =
+    safeProfile.goals.desiredMonthlyRetirementIncome;
 
-if (typeof goalDesired === "number" && goalDesired > 0) {
-  // Avoid accidentally treating monthly pension as the desired retirement spending target
-  if (goalDesired !== monthlyPension) {
-    desiredMonthlyIncome = goalDesired;
+  const monthlyPension = Number(
+    safeProfile.income.monthlyPension || 0
+  );
+
+  let desiredMonthlyIncome = Number(profileDesired || 0);
+
+  if (typeof goalDesired === "number" && goalDesired > 0) {
+    /**
+     * Protect against legacy data where the retirement goal may
+     * have accidentally stored monthly pension as the desired
+     * retirement income.
+     */
+    if (goalDesired !== monthlyPension) {
+      desiredMonthlyIncome = goalDesired;
+    }
   }
-}
 
-return {
-  currentAge: profile.personal.currentAge,
-  retirementAge: profile.personal.retirementAge,
+  /**
+   * IMPORTANT:
+   *
+   * monthlyInvestment is the CURRENT monthly investment amount.
+   *
+   * annualSipIncrease is intentionally taken only from the
+   * canonical profile assumption for now.
+   *
+   * A historical SIP increase from Monthly Financial Reviews
+   * must NOT automatically become a future recurring step-up.
+   *
+   * Later, Sprint 3B / SIP Step-Up Engine can provide an explicit
+   * confirmed future step-up override.
+   */
+  const annualSipIncrease = Number(
+    safeProfile.assumptions.sipIncrease || 0
+  );
 
-  // Assets
-  mutualFunds: valueForCategory("Mutual Fund"),
-  ppf: valueForCategory("PPF"),
-  epf: valueForCategory("EPF"),
-  nps: valueForCategory("NPS"),
-  emergencyFund: valueForCategory("Emergency Fund"),
-  cash: valueForCategory("Savings Account") + valueForCategory("Cash"),
+  return {
+    currentAge: Number(safeProfile.personal.currentAge || 0),
 
-  // Legacy (kept for compatibility)
-  currentCorpus,
+    retirementAge: Number(
+      safeProfile.personal.retirementAge || 0
+    ),
 
-  // Income
-  monthlySalary: profile.income.monthlySalary,
+    // Current retirement assets from canonical Portfolio
+    mutualFunds,
+    ppf,
+    epf,
+    nps,
 
-  // Current monthly investment
-  monthlyInvestment: profile.income.monthlyInvestment,
+    // Other assets retained for compatibility
+    emergencyFund: valueForCategory("Emergency Fund"),
 
-  // Growth assumptions
-  // A recorded annual SIP review takes precedence over the planned profile rate.
-  annualSipIncrease:
-    latestSipReview?.increasePercent !== undefined &&
-    latestSipReview.increasePercent !== null
-      ? latestSipReview.increasePercent / 100
-      : profile.assumptions.sipIncrease,
-  expectedAnnualIncrement: profile.assumptions.salaryIncrement,
+    cash:
+      valueForCategory("Savings Account") +
+      valueForCategory("Cash"),
 
-  // Returns
-  equityReturn: profile.assumptions.equityReturn,
-  debtReturn: profile.assumptions.debtReturn,
-  inflationRate: profile.assumptions.inflationRate,
-  withdrawalRate: profile.assumptions.withdrawalRate,
+    // Legacy compatibility
+    currentCorpus,
 
-  // Retirement
-  desiredMonthlyIncome: desiredMonthlyIncome,
-  monthlyPension: monthlyPension,
-};
+    // Income
+    monthlySalary: Number(
+      safeProfile.income.monthlySalary || 0
+    ),
+
+    /**
+     * Current monthly investment.
+     *
+     * This is the base SIP used by the retirement engine.
+     */
+    monthlyInvestment: Number(
+      safeProfile.income.monthlyInvestment || 0
+    ),
+
+    /**
+     * Future annual SIP increase.
+     *
+     * This is NOT inferred from historical monthly reviews.
+     */
+    annualSipIncrease,
+
+    expectedAnnualIncrement: Number(
+      safeProfile.assumptions.salaryIncrement || 0
+    ),
+
+    // Return assumptions
+    equityReturn: Number(
+      safeProfile.assumptions.equityReturn || 0
+    ),
+
+    equityVolatility: 0.15,
+
+    debtReturn: Number(
+      safeProfile.assumptions.debtReturn || 0
+    ),
+
+    debtVolatility: 0.03,
+
+    inflationRate: Number(
+      safeProfile.assumptions.inflationRate || 0
+    ),
+
+    withdrawalRate: Number(
+      safeProfile.assumptions.withdrawalRate || 0
+    ),
+
+    // Retirement target
+    desiredMonthlyIncome,
+
+    monthlyPension,
+  };
 }

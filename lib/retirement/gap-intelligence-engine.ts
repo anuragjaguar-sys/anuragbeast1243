@@ -1,7 +1,8 @@
 import { getPortfolio } from "@/lib/investments";
 import { getRetirementAssumptionsFromProfile } from "@/lib/profile/profile-retirement-adapter";
-import { getRetirementProjection } from "./retirement-engine";
+import { generateRetirementProjection } from "./projection";
 import type { RetirementAssumptions } from "./types";
+import type { FinancialProfile } from "@/lib/profile/profile.types";
 
 export type RetirementGapStatus =
   | "ON_TRACK"
@@ -85,15 +86,16 @@ function calculateRequiredMonthlyInvestment(
 }
 
 export function getRetirementGapAnalysis(
+  profile: FinancialProfile,
   overrides?: Partial<RetirementAssumptions>
 ): RetirementGapAnalysis {
   const assumptions = {
-    ...getRetirementAssumptionsFromProfile(),
+    ...getRetirementAssumptionsFromProfile(profile),
     ...overrides,
   };
 
   const portfolio = getPortfolio();
-  const projection = getRetirementProjection(overrides);
+ const projection = generateRetirementProjection(assumptions);
 
   const currentCorpus =
     clampFiniteNumber(projection.currentCorpus, 0) ||

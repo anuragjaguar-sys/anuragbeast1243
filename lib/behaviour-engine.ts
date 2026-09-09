@@ -1,3 +1,5 @@
+import { CloudSyncService } from "@/lib/core/sync-service";
+import { StorageManager } from "@/lib/core/storage-manager";
 /**
  * ATHENA Behaviour & Decision Intelligence Engine
  * 
@@ -299,41 +301,25 @@ export function getBehaviourDashboardData(profile: BehaviourProfile): BehaviourD
 // LOCAL STORAGE FUNCTIONS
 // =========================================
 
-const STORAGE_KEY = "fire54_behaviour_profile";
+const STORAGE_KEY = StorageManager.KEYS.BEHAVIOUR_PROFILE;
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
 
 /**
- * Load behaviour profile from localStorage
+ * Load behaviour profile via StorageManager
  */
 export function loadBehaviourProfile(): BehaviourProfile | null {
-  if (!isBrowser()) return null;
-
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-
-    const profile: BehaviourProfile = JSON.parse(raw);
-    return profile;
-  } catch (error) {
-    console.error("Failed to load behaviour profile:", error);
-    return null;
-  }
+  return StorageManager.get<BehaviourProfile | null>(STORAGE_KEY, null);
 }
 
 /**
- * Save behaviour profile to localStorage
+ * Save behaviour profile via StorageManager
  */
 export function saveBehaviourProfile(profile: BehaviourProfile): void {
-  if (!isBrowser()) return;
-
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-  } catch (error) {
-    console.error("Failed to save behaviour profile:", error);
-  }
+  StorageManager.set(STORAGE_KEY, profile);
+  void CloudSyncService.pushStore("behaviourProfile", profile);
 }
 
 /**
@@ -586,17 +572,27 @@ export function checkAchievements(profile: BehaviourProfile): BehaviourProfile {
 export function getLastRelapse(
   profile: BehaviourProfile
 ): TradingEvent | null {
-  if (profile.tradingHistory.length === 0) {
+  const tradingHistory = Array.isArray(profile.tradingHistory)
+    ? profile.tradingHistory
+    : [];
+
+  if (tradingHistory.length === 0) {
     return null;
   }
 
-  return profile.tradingHistory[profile.tradingHistory.length - 1];
+  return tradingHistory[tradingHistory.length - 1];
 }
+
 export function getRecoveryHistory(
   profile: BehaviourProfile
 ): TradingEvent[] {
-  return [...profile.tradingHistory].reverse();
+  const tradingHistory = Array.isArray(profile.tradingHistory)
+    ? profile.tradingHistory
+    : [];
+
+  return [...tradingHistory].reverse();
 }
+
 export function getRecoverySummary(
   profile: BehaviourProfile
 ) {
@@ -604,10 +600,14 @@ export function getRecoverySummary(
     profile.recoveryStartDate
   );
 
-  const relapseCount = profile.tradingHistory.length;
+  const tradingHistory = Array.isArray(profile.tradingHistory)
+    ? profile.tradingHistory
+    : [];
 
-  const totalLoss = profile.tradingHistory.reduce(
-    (sum, trade) => sum + trade.loss,
+  const relapseCount = tradingHistory.length;
+
+  const totalLoss = tradingHistory.reduce(
+    (sum, trade) => sum + Number(trade.loss || 0),
     0
   );
 
@@ -620,11 +620,9 @@ export function getRecoverySummary(
     currentStreak,
     longestStreak: profile.longestStreak,
     recoveryStartDate: profile.recoveryStartDate,
-
     relapseCount,
     totalLoss,
     averageLoss,
-
     lastRelapse: getLastRelapse(profile),
   };
 }
@@ -665,7 +663,9 @@ export function updateGoalProgress(goalId: string, current: number): BehaviourPr
 // =========================================
 
 export function getRecoveryInsights(profile: BehaviourProfile) {
-  const history = profile.tradingHistory;
+  const history = Array.isArray(profile.tradingHistory)
+    ? profile.tradingHistory
+    : [];
 
   if (history.length === 0) {
     return {
@@ -679,17 +679,16 @@ export function getRecoveryInsights(profile: BehaviourProfile) {
   }
 
   const totalLoss = history.reduce(
-    (sum, trade) => sum + trade.loss,
+    (sum, trade) => sum + Number(trade.loss || 0),
     0
   );
 
   const largestLoss = Math.max(
-    ...history.map((trade) => trade.loss)
+    ...history.map((trade) => Number(trade.loss || 0))
   );
 
   const averageLoss = totalLoss / history.length;
 
-  // Count triggers
   const triggerCounts: Record<string, number> = {};
 
   history.forEach((trade) => {
@@ -699,9 +698,8 @@ export function getRecoveryInsights(profile: BehaviourProfile) {
 
   const mostCommonTrigger = Object.entries(triggerCounts).sort(
     (a, b) => b[1] - a[1]
-  )[0][0];
+  )[0]?.[0] ?? "None";
 
-  // Assume 12% annual return over 20 years
   const estimatedWealthLost = totalLoss * Math.pow(1.12, 20);
 
   return {

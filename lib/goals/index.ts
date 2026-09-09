@@ -1,4 +1,4 @@
-export * from "./types";
+export type * from "./types";
 export * from "./assumptions";
 export * from "./calculations";
 export * from "./goal-engine";

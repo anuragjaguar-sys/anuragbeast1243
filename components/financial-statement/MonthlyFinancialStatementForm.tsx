@@ -17,7 +17,7 @@ import {
   getAllMonthlyReviews,
 } from "@/lib/storage";
 
-import { applyMonthlyStatement } from "@/lib/investments/apply-monthly-statement";
+
 
 import {
   calculateMonthlyIncome,
@@ -32,6 +32,7 @@ import {
   saveGoalLedger,
   type Goal,
 } from "@/lib/goals";
+
 function CurrencyInput({
   label,
   value,
@@ -127,50 +128,129 @@ function BalanceWarning({
     </div>
   );
 }
+
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const SIP_STEP_UP_OPTIONS = ["10", "15", "20"] as const;
+
+function createBlankStatement(month: number, year: number): MonthlyFinancialStatement {
+  const blank = structuredClone(INITIAL_MONTHLY_FINANCIAL_STATEMENT);
+  blank.month = month;
+  blank.year = year;
+  return blank;
+}
+
 export default function MonthlyFinancialStatementForm() {
-  const [form, setForm] = useState<MonthlyFinancialStatement>(
-    INITIAL_MONTHLY_FINANCIAL_STATEMENT
+  const [form, setForm] = useState<MonthlyFinancialStatement>(() =>
+    createBlankStatement(
+      INITIAL_MONTHLY_FINANCIAL_STATEMENT.month,
+      INITIAL_MONTHLY_FINANCIAL_STATEMENT.year
+    )
   );
 
   const [showNotification, setShowNotification] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-const [goals] = useState<Goal[]>(
-  loadGoals()
-);
+  const [goals] = useState<Goal[]>(loadGoals());
+
+  function getJanuarySipPlan(year: number): string {
+    return (
+      getAllMonthlyReviews().find(
+        (entry) =>
+          entry.data.year === year &&
+          entry.data.month === 1 &&
+          Boolean(entry.data.sipStepUp?.plannedPercent)
+      )?.data.sipStepUp?.plannedPercent ?? ""
+    );
+  }
+
+  const annualSipPlan =
+    form.month === 1
+      ? form.sipStepUp.plannedPercent
+      : getJanuarySipPlan(form.year);
+
   const sipAnnualReview = useMemo(() => {
-    const previousYearStatement = getAllMonthlyReviews()
-      .find(
+    const previousYearStatement =
+      getAllMonthlyReviews().find(
         (entry) =>
           entry.data.month === form.month &&
           entry.data.year === form.year - 1
       )?.data ?? null;
 
-    return calculateSipAnnualReview(form, previousYearStatement);
-  }, [form]);
-  useEffect(() => {
-  const existing = loadMonthlyReview();
+    return calculateSipAnnualReview(
+      {
+        ...form,
+        sipStepUp:
+          form.month === 1
+            ? form.sipStepUp
+            : { plannedPercent: annualSipPlan, appliedThisMonth: "Not Applicable" },
+      },
+      previousYearStatement
+    );
+  }, [form, annualSipPlan]);
 
-  if (existing && "version" in existing && existing.version === 2) {
-    const statement = existing as MonthlyFinancialStatement;
+  // Handle Month/Year Selection Change with Athena check & confirmation dialog
+  function handleMonthOrYearChange(newMonth: number, newYear: number) {
+    const monthKey = `${newYear}-${String(newMonth).padStart(2, "0")}`;
+    const existing = loadMonthlyReview(monthKey);
+    const monthName = MONTHS[newMonth - 1];
 
-    setForm({
-  ...statement,
+    if (existing && "version" in existing && existing.version === 2) {
+      const confirmAmend = window.confirm(
+        `Do you want to amend your financial data for current month ie: ${monthName} ${newYear}?`
+      );
 
-  goalContributions:
-    statement.goalContributions ?? [],
+      if (confirmAmend) {
+        setForm({
+          ...(existing as MonthlyFinancialStatement),
+          goalContributions: (existing as MonthlyFinancialStatement).goalContributions ?? [],
+          sipStepUp: (existing as MonthlyFinancialStatement).sipStepUp ?? {
+            plannedPercent: "",
+            appliedThisMonth: "Not Applicable",
+          },
+        });
+        return;
+      }
+    }
 
-  sipStepUp:
-    statement.sipStepUp ?? {
-      plannedPercent: "",
+    // Otherwise, reset to fresh zero-filled data for the selected month/year
+    const blankStatement = createBlankStatement(newMonth, newYear);
+    blankStatement.sipStepUp = {
+      plannedPercent: newMonth === 1 ? "" : getJanuarySipPlan(newYear),
       appliedThisMonth: "Not Applicable",
-    },
-});
+    };
+    setForm(blankStatement);
   }
-}, []);
 
-  // ======================================================
-  // Generic Update
-  // ======================================================
+  useEffect(() => {
+    // Initial check for current form month/year on load
+    const initialMonthKey = `${form.year}-${String(form.month).padStart(2, "0")}`;
+    const existing = loadMonthlyReview(initialMonthKey);
+
+    if (existing && "version" in existing && existing.version === 2) {
+      const statement = existing as MonthlyFinancialStatement;
+      setForm({
+        ...statement,
+        goalContributions: statement.goalContributions ?? [],
+        sipStepUp: statement.sipStepUp ?? {
+          plannedPercent: "",
+          appliedThisMonth: "Not Applicable",
+        },
+      });
+    }
+  }, []);
 
   function updateField<K extends keyof MonthlyFinancialStatement>(
     name: K,
@@ -181,10 +261,6 @@ const [goals] = useState<Goal[]>(
       [name]: value,
     }));
   }
-
-  // ======================================================
-  // Income
-  // ======================================================
 
   function updateIncomeField<
     K extends keyof MonthlyFinancialStatement["income"]
@@ -198,10 +274,6 @@ const [goals] = useState<Goal[]>(
     }));
   }
 
-  // ======================================================
-  // Cash Allocation
-  // ======================================================
-
   function updateCashAllocationField<
     K extends keyof MonthlyFinancialStatement["cashAllocation"]
   >(name: K, value: string) {
@@ -214,11 +286,6 @@ const [goals] = useState<Goal[]>(
     }));
   }
 
-  // ======================================================
-  // Assets
-  // (Keep for now. Will remove after Portfolio Engine is complete.)
-  // ======================================================
-
   function updateAssetField<
     K extends keyof MonthlyFinancialStatement["assets"]
   >(name: K, value: string) {
@@ -230,27 +297,6 @@ const [goals] = useState<Goal[]>(
       },
     }));
   }
-
-  // ======================================================
-  // Liabilities
-  // (Keep for now. Will remove later.)
-  // ======================================================
-
-  function updateLiabilityField<
-    K extends keyof MonthlyFinancialStatement["liabilities"]
-  >(name: K, value: string) {
-    setForm((prev) => ({
-      ...prev,
-      liabilities: {
-        ...prev.liabilities,
-        [name]: value,
-      },
-    }));
-  }
-
-  // ======================================================
-  // Decisions
-  // ======================================================
 
   function addDecision() {
     const newDecision: Decision = {
@@ -292,995 +338,558 @@ const [goals] = useState<Goal[]>(
       ),
     }));
   }
-// ======================================================
-// Goal Contributions
-// ======================================================
 
-function addGoalContribution() {
-  setForm((prev) => ({
-    ...prev,
+  function addGoalContribution() {
+    setForm((prev) => ({
+      ...prev,
+      goalContributions: [
+        ...(prev.goalContributions ?? []),
+        {
+          id: crypto.randomUUID(),
+          goalId: "",
+          goalTitle: "",
+          amount: "",
+        },
+      ],
+    }));
+  }
 
-    goalContributions: [
-      ...(prev.goalContributions ?? []),
-      {
-        id: crypto.randomUUID(),
-        goalId: "",
-        goalTitle: "",
-        amount: "",
-      },
-    ],
-  }));
-}
-
-function updateGoalContribution(
-  id: string,
-  field: keyof GoalContribution,
-  value: string
-) {
-  setForm((prev) => ({
-    ...prev,
-
-    goalContributions: (prev.goalContributions ?? []).map(
-      (goal) =>
+  function updateGoalContribution(
+    id: string,
+    field: keyof GoalContribution,
+    value: string
+  ) {
+    setForm((prev) => ({
+      ...prev,
+      goalContributions: (prev.goalContributions ?? []).map((goal) =>
         goal.id === id
           ? {
               ...goal,
               [field]: value,
             }
           : goal
-    ),
-  }));
-}
-
-function removeGoalContribution(id: string) {
-  setForm((prev) => ({
-    ...prev,
-
-    goalContributions: (prev.goalContributions ?? []).filter(
-      (goal) => goal.id !== id
-    ),
-  }));
-}
-  // ======================================================
-  // Save
-  // ======================================================
-
- function handleSave() {
-  const medicalInsurancePremium = goals
-    .filter((goal) => goal.category === "Insurance" && goal.timeframe === "Long Term")
-    .reduce((total, goal) => total + Number(goal.monthlyExpense || 0), 0);
-  const recordedMedicalExpense = Number(form.expenses.family.medical || 0);
-
-  if (recordedMedicalExpense < medicalInsurancePremium) {
-    setSaveError(
-      `${formatINR(medicalInsurancePremium - recordedMedicalExpense)} of medical insurance premium is unaccounted. Add it under Family → Medical expenses before saving.`
-    );
-    return;
+      ),
+    }));
   }
 
-  const cashAllocationCheck = calculateCashAllocation(form);
-
-  if (!cashAllocationCheck.isBalanced) {
-    const difference = Math.abs(cashAllocationCheck.difference);
-    const issue =
-      cashAllocationCheck.difference > 0
-        ? `${formatINR(difference)} is unaccounted.`
-        : `${formatINR(difference)} is over-accounted.`;
-
-    setSaveError(
-      `${issue} Allocate every rupee in Cash Allocation before saving.`
-    );
-    return;
+  function removeGoalContribution(id: string) {
+    setForm((prev) => ({
+      ...prev,
+      goalContributions: (prev.goalContributions ?? []).filter(
+        (goal) => goal.id !== id
+      ),
+    }));
   }
 
-  setSaveError(null);
+  function handleSave() {
+    const medicalInsurancePremium = goals
+      .filter((goal) => goal.category === "Insurance" && goal.timeframe === "Long Term")
+      .reduce((total, goal) => total + Number(goal.monthlyExpense || 0), 0);
+    const recordedMedicalExpense = Number(form.expenses.family.medical || 0);
 
-  // --------------------------------------------------
-  // Identify the month being saved
-  // --------------------------------------------------
-
-  const month = form.month;
-  const year = form.year;
-
-  const monthKey = `${year}-${String(month).padStart(2, "0")}`;
-
-  // --------------------------------------------------
-  // Load the statement that was previously saved
-  // for this month.
-  // --------------------------------------------------
-
-  const previousStatement =
-    loadMonthlyReview(monthKey);
-
-  // --------------------------------------------------
-  // Save Goal Contributions to Goal Ledger
-  // --------------------------------------------------
-
-  const now = new Date();
-
-  const existingLedger = loadGoalLedger();
-
-  const updatedLedger = [...existingLedger];
-
-  for (const contribution of form.goalContributions ?? []) {
-    const amount = Number(
-      contribution.amount || 0
-    );
-
-    // Ignore empty / invalid contributions
-    if (
-      !contribution.goalId ||
-      amount <= 0
-    ) {
-      continue;
+    if (recordedMedicalExpense < medicalInsurancePremium) {
+      setSaveError(
+        `${formatINR(medicalInsurancePremium - recordedMedicalExpense)} of medical insurance premium is unaccounted. Add it under Family → Medical expenses before saving.`
+      );
+      return;
     }
 
-    const existingIndex =
-      updatedLedger.findIndex(
+    const cashAllocationCheck = calculateCashAllocation(form);
+
+    if (!cashAllocationCheck.isBalanced) {
+      const difference = Math.abs(cashAllocationCheck.difference);
+      const issue =
+        cashAllocationCheck.difference > 0
+          ? `${formatINR(difference)} is unaccounted.`
+          : `${formatINR(difference)} is over-accounted.`;
+
+      setSaveError(
+        `${issue} Allocate every rupee in Cash Allocation before saving.`
+      );
+      return;
+    }
+
+    setSaveError(null);
+
+    const month = form.month;
+    const year = form.year;
+    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+
+    const previousStatement = loadMonthlyReview(monthKey);
+    const now = new Date();
+    const existingLedger = loadGoalLedger();
+    const updatedLedger = [...existingLedger];
+
+    for (const contribution of form.goalContributions ?? []) {
+      const amount = Number(contribution.amount || 0);
+
+      if (!contribution.goalId || amount <= 0) {
+        continue;
+      }
+
+      const existingIndex = updatedLedger.findIndex(
         (entry) =>
-          entry.goalId ===
-            contribution.goalId &&
+          entry.goalId === contribution.goalId &&
           entry.month === month &&
           entry.year === year
       );
 
-    const goal = goals.find(
-      (item) =>
-        item.id === contribution.goalId
-    );
+      const goal = goals.find((item) => item.id === contribution.goalId);
 
-    const ledgerEntry = {
-      id:
-        existingIndex >= 0
-          ? updatedLedger[existingIndex].id
-          : crypto.randomUUID(),
+      const ledgerEntry = {
+        id:
+          existingIndex >= 0
+            ? updatedLedger[existingIndex].id
+            : crypto.randomUUID(),
+        goalId: contribution.goalId,
+        goalTitle: goal?.title ?? contribution.goalTitle,
+        amount,
+        month,
+        year,
+        date: now.toISOString(),
+      };
 
-      goalId:
-        contribution.goalId,
+      if (existingIndex >= 0) {
+        updatedLedger[existingIndex] = ledgerEntry;
+      } else {
+        updatedLedger.push(ledgerEntry);
+      }
+    }
 
-      goalTitle:
-        goal?.title ??
-        contribution.goalTitle,
+    saveGoalLedger(updatedLedger);
 
-      amount,
-
-      month,
-
-      year,
-
-      date: now.toISOString(),
+    const statementToSave: MonthlyFinancialStatement = {
+      ...form,
+      sipStepUp:
+        form.month === 1
+          ? form.sipStepUp
+          : { plannedPercent: annualSipPlan, appliedThisMonth: "Not Applicable" },
+      sipAnnualReview,
     };
 
-    // Update existing month's contribution
-    // instead of creating a duplicate.
-    if (existingIndex >= 0) {
-      updatedLedger[existingIndex] =
-        ledgerEntry;
-    } else {
-      updatedLedger.push(
-        ledgerEntry
-      );
-    }
-  }
+    
 
-  saveGoalLedger(updatedLedger);
-
-  // --------------------------------------------------
-  // Apply Portfolio changes
-  //
-  // IMPORTANT:
-  // Pass the previous statement so the processor
-  // can calculate only the difference.
-  // --------------------------------------------------
-
-  const statementToSave: MonthlyFinancialStatement = {
-    ...form,
-    sipAnnualReview,
-  };
-
-  const result =
-    applyMonthlyStatement(
+    saveFinancialStatement(
       statementToSave,
-      previousStatement
+      monthKey,
+      getMonthLabel(new Date(year, month - 1, 1))
     );
 
-  console.log(
-    "Portfolio Updated"
-  );
+    setShowNotification(true);
 
-  console.table(
-    result.updates
-  );
-
-  // --------------------------------------------------
-  // Save the NEW monthly statement
-  // --------------------------------------------------
-
-  saveFinancialStatement(
-    statementToSave,
-    monthKey,
-    getMonthLabel()
-  );
-
-  console.log(
-    "Goal Contributions Saved"
-  );
-
-  // --------------------------------------------------
-  // Success notification
-  // --------------------------------------------------
-
-  setShowNotification(true);
-
-  setTimeout(() => {
-    setShowNotification(false);
-  }, 3500);
-}
-  // ======================================================
-  // Dashboard Calculations
-  // ======================================================
+    setTimeout(() => {
+      setShowNotification(false);
+    }, 3500);
+  }
 
   const cashAllocationCheck = calculateCashAllocation(form);
-
   const totalIncome = calculateMonthlyIncome(form);
-
   const totalExpenses = calculateTotalExpenses(form);
 
   return (
-  <div className="min-h-full bg-[#0a0a0c] font-sans text-zinc-100">
-    {/* Success Notification */}
-    {showNotification && (
-      <div className="fixed top-6 right-6 z-[100] flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-5 py-3.5 shadow-lg shadow-emerald-500/10 backdrop-blur-sm">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-sm text-white">
-          ✓
-        </span>
-        <span className="text-sm font-medium text-emerald-300">
-          Monthly Financial Statement Saved Successfully.
-        </span>
-      </div>
-    )}
-
-    {saveError && (
-      <div
-        role="alert"
-        className="fixed top-6 right-6 z-[100] max-w-md rounded-xl border border-amber-500/30 bg-amber-500/15 px-5 py-3.5 text-sm font-medium text-amber-200 shadow-lg shadow-amber-500/10 backdrop-blur-sm"
-      >
-        ⚠ {saveError}
-      </div>
-    )}
-
-    <div className="pointer-events-none fixed inset-0 overflow-hidden">
-      <div className="absolute -top-40 right-1/4 h-[500px] w-[500px] rounded-full bg-blue-500/[0.04] blur-[120px]" />
-      <div className="absolute bottom-0 left-1/3 h-[300px] w-[400px] rounded-full bg-emerald-500/[0.03] blur-[100px]" />
-    </div>
-
-    <main className="relative mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-
-      {/* Header */}
-
-      <header className="mb-10">
-
-        <div className="mb-4 flex items-center gap-4">
-
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-2xl ring-1 ring-blue-500/20">
-            📊
-          </div>
-
-          <div>
-
-            <p className="font-mono text-xs tracking-[0.25em] uppercase text-zinc-500">
-              Monthly Financial Statement
-            </p>
-
-            <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-              {getMonthLabel()}
-            </h1>
-
-          </div>
-
+    <div className="min-h-full bg-[#0a0a0c] font-sans text-zinc-100">
+      {showNotification && (
+        <div className="fixed top-6 right-6 z-[100] flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-5 py-3.5 shadow-lg shadow-emerald-500/10 backdrop-blur-sm">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-sm text-white">
+            ✓
+          </span>
+          <span className="text-sm font-medium text-emerald-300">
+            Monthly Financial Statement Saved Successfully.
+          </span>
         </div>
-
-        <p className="max-w-2xl text-base leading-relaxed text-zinc-400">
-          Record this month's financial activity. Portfolio values are managed
-          separately in the Portfolio module.
-        </p>
-
-      </header>
-
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          handleSave();
-        }}
-        className="space-y-6"
-      >
-
-        {/* =======================================================
-            MONTH INFORMATION
-        ======================================================= */}
-
-        <SectionCard
-          icon="📅"
-          title="Month Information"
-          subtitle="Basic details"
-          accent="emerald"
-        >
-
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-
-            <div>
-
-              <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
-                Month
-              </label>
-
-              <input
-                type="number"
-                min={1}
-                max={12}
-                value={form.month}
-                onChange={(e) =>
-                  updateField("month", Number(e.target.value))
-                }
-                className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 font-mono text-sm text-white"
-              />
-
-            </div>
-
-            <div>
-
-              <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
-                Year
-              </label>
-
-              <input
-                type="number"
-                value={form.year}
-                onChange={(e) =>
-                  updateField("year", Number(e.target.value))
-                }
-                className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 font-mono text-sm text-white"
-              />
-
-            </div>
-
-          </div>
-
-          <div className="mt-5">
-
-            <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
-              Financial Notes
-            </label>
-
-            <textarea
-              value={form.financialNotes}
-              onChange={(e) =>
-                updateField("financialNotes", e.target.value)
-              }
-              rows={3}
-              className="w-full resize-none rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white"
-            />
-
-          </div>
-
-          <div className="mt-5">
-
-            <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
-              Important Decisions
-            </label>
-
-            <textarea
-              value={form.importantDecisions}
-              onChange={(e) =>
-                updateField("importantDecisions", e.target.value)
-              }
-              rows={3}
-              className="w-full resize-none rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white"
-            />
-
-          </div>
-
-        </SectionCard>
-
-        {/* =======================================================
-            INCOME
-        ======================================================= */}
-
-        <SectionCard
-          icon="💰"
-          title="Income"
-          subtitle="Monthly inflows"
-          accent="emerald"
-        >
-
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-
-            <CurrencyInput
-              label="Salary (In Hand)"
-              value={form.income.salaryInHand}
-              onChange={(v) =>
-                updateIncomeField("salaryInHand", v)
-              }
-            />
-
-            <CurrencyInput
-              label="Other Income"
-              value={form.income.otherIncome}
-              onChange={(v) =>
-                updateIncomeField("otherIncome", v)
-              }
-            />
-
-          </div>
-
-          <div className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5">
-
-            <p className="font-mono text-xs font-semibold uppercase tracking-wider text-emerald-400">
-              Total Monthly Income
-            </p>
-
-            <p className="mt-2 text-3xl font-bold text-white">
-              {formatINR(totalIncome)}
-            </p>
-
-          </div>
-
-        </SectionCard>
-
-          {/* ============================================================
-    SECTION 3 : MONTHLY INVESTMENTS
-============================================================ */}
-
-<SectionCard
-  icon="📈"
-  title="Investments This Month"
-  subtitle="Monthly Contributions"
-  accent="blue"
->
-  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-
-    <CurrencyInput
-      label="Mutual Fund SIP"
-      value={form.cashAllocation.investments}
-      onChange={(v) =>
-        updateCashAllocationField("investments", v)
-      }
-    />
-<div className="sm:col-span-2 rounded-xl border border-violet-500/30 bg-violet-500/10 p-5">
-  <div className="mb-4">
-    <p className="font-mono text-xs font-semibold uppercase tracking-wider text-violet-300">
-      Annual SIP Step-Up
-    </p>
-
-    <p className="mt-1 text-sm text-zinc-400">
-      Set the SIP increase you intend to apply during this year,
-      then confirm whether it was actually implemented this month.
-    </p>
-  </div>
-
-  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-
-    <label className="block">
-      <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-        Planned Step-Up for This Year
-      </span>
-
-      <div className="relative">
-        <input
-          type="number"
-          min="0"
-          max="100"
-          step="0.1"
-          value={form.sipStepUp.plannedPercent}
-          onChange={(e) =>
-            setForm((prev) => ({
-              ...prev,
-              sipStepUp: {
-                ...prev.sipStepUp,
-                plannedPercent: e.target.value,
-              },
-            }))
-          }
-          placeholder="e.g. 10"
-          className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 pr-10 font-mono text-sm text-white placeholder:text-zinc-600 focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
-        />
-
-        <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-mono text-sm text-zinc-500">
-          %
-        </span>
-      </div>
-
-      <p className="mt-2 text-xs text-zinc-600">
-        Example: enter 10 for a 10% annual SIP increase.
-      </p>
-    </label>
-
-    <label className="block">
-      <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-        Was Step-Up Applied This Month?
-      </span>
-
-      <select
-        value={form.sipStepUp.appliedThisMonth}
-        onChange={(e) =>
-          setForm((prev) => ({
-            ...prev,
-            sipStepUp: {
-              ...prev.sipStepUp,
-              appliedThisMonth:
-                e.target.value as
-                  | "Yes"
-                  | "No"
-                  | "Not Applicable",
-            },
-          }))
-        }
-        className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
-      >
-        <option value="Not Applicable">
-          Not Applicable
-        </option>
-
-        <option value="Yes">
-          Yes — Step-Up Applied
-        </option>
-
-        <option value="No">
-          No — Step-Up Not Applied
-        </option>
-      </select>
-    </label>
-
-  </div>
-</div>
-    <CurrencyInput
-  label="Mutual Fund SIP"
-  value={form.cashAllocation.investments}
-  onChange={(v) =>
-    updateCashAllocationField(
-      "investments",
-      v
-    )
-  }
-/>
-    <CurrencyInput
-      label="PPF Contribution"
-      value={form.assets.ppf}
-      onChange={(v) =>
-        updateAssetField("ppf", v)
-      }
-    />
-
-    <CurrencyInput
-      label="Stocks Purchased"
-      value={form.assets.cash}
-      onChange={(v) =>
-        updateAssetField("cash", v)
-      }
-    />
-
-    <CurrencyInput
-      label="NPS Contribution"
-      value={form.assets.nps}
-      onChange={(v) =>
-        updateAssetField("nps", v)
-      }
-    />
-
-  </div>
-
-  <div className="mt-5 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
-
-    <p className="font-mono text-xs uppercase tracking-wider text-blue-400">
-      Monthly Investment
-    </p>
-
-    <p className="mt-2 text-2xl font-semibold text-white">
-
-      {formatINR(
-        Number(form.cashAllocation.investments || 0) +
-        Number(form.income.otherIncome || 0) +
-        Number(form.assets.ppf || 0) +
-        Number(form.assets.cash || 0) +
-        Number(form.assets.nps || 0)
       )}
 
-    </p>
-
-  </div>
-
-  <div className="mt-4 rounded-xl border border-violet-500/30 bg-violet-500/10 p-5">
-  <div className="mb-4">
-    <p className="font-mono text-xs font-semibold uppercase tracking-wider text-violet-300">
-      SIP Step-Up Review
-    </p>
-
-    <p className="mt-1 text-xs text-zinc-500">
-      Annual SIP discipline and implementation check
-    </p>
-  </div>
-
-  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-    <div>
-      <p className="text-xs text-zinc-500">
-        Previous SIP
-      </p>
-
-      <p className="mt-1 font-mono text-sm font-semibold text-white">
-        {sipAnnualReview.previousMonthlySip === null
-          ? "Not available"
-          : formatINR(
-              sipAnnualReview.previousMonthlySip
-            )}
-      </p>
-    </div>
-
-    <div>
-      <p className="text-xs text-zinc-500">
-        Planned Step-Up
-      </p>
-
-      <p className="mt-1 font-mono text-sm font-semibold text-violet-300">
-        {sipAnnualReview.plannedStepUpPercent === null
-          ? "Not set"
-          : `${sipAnnualReview.plannedStepUpPercent}%`}
-      </p>
-    </div>
-
-    <div>
-      <p className="text-xs text-zinc-500">
-        Expected SIP
-      </p>
-
-      <p className="mt-1 font-mono text-sm font-semibold text-white">
-        {sipAnnualReview.expectedMonthlySip === null
-          ? "Not available"
-          : formatINR(
-              sipAnnualReview.expectedMonthlySip
-            )}
-      </p>
-    </div>
-
-    <div>
-      <p className="text-xs text-zinc-500">
-        Actual SIP
-      </p>
-
-      <p className="mt-1 font-mono text-sm font-semibold text-emerald-400">
-        {formatINR(
-          sipAnnualReview.actualMonthlySip
-        )}
-      </p>
-    </div>
-
-  </div>
-
-  <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-
-    <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
-      <p className="text-xs text-zinc-500">
-        Step-Up Decision
-      </p>
-
-      <p className="mt-1 text-sm font-semibold text-white">
-        {sipAnnualReview.stepUpApplied}
-      </p>
-    </div>
-
-    <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
-      <p className="text-xs text-zinc-500">
-        Status
-      </p>
-
-      <p
-        className={`mt-1 text-sm font-semibold ${
-          sipAnnualReview.stepUpStatus === "Applied"
-            ? "text-emerald-400"
-            : sipAnnualReview.stepUpStatus ===
-              "Above Expected"
-            ? "text-blue-400"
-            : sipAnnualReview.stepUpStatus ===
-              "Not Applied"
-            ? "text-amber-400"
-            : sipAnnualReview.stepUpStatus ===
-              "Below Expected"
-            ? "text-rose-400"
-            : "text-zinc-300"
-        }`}
-      >
-        {sipAnnualReview.stepUpStatus}
-      </p>
-    </div>
-
-    <div className="rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
-      <p className="text-xs text-zinc-500">
-        Variance From Expected
-      </p>
-
-      <p className="mt-1 text-sm font-semibold text-white">
-        {sipAnnualReview.varianceFromExpected === null
-          ? "Not available"
-          : formatINR(
-              sipAnnualReview.varianceFromExpected
-            )}
-      </p>
-    </div>
-
-  </div>
-
-  {sipAnnualReview.previousMonthlySip !== null && (
-    <div className="mt-4 rounded-lg border border-zinc-800/60 bg-zinc-950/30 p-3">
-      <p className="text-xs leading-relaxed text-zinc-400">
-        Previous SIP:{" "}
-        <span className="text-white">
-          {formatINR(
-            sipAnnualReview.previousMonthlySip
-          )}
-        </span>
-
-        {" → "}
-
-        Expected after step-up:{" "}
-        <span className="text-violet-300">
-          {sipAnnualReview.expectedMonthlySip === null
-            ? "Not set"
-            : formatINR(
-                sipAnnualReview.expectedMonthlySip
-              )}
-        </span>
-
-        {" → "}
-
-        Actual:{" "}
-        <span className="text-emerald-400">
-          {formatINR(
-            sipAnnualReview.actualMonthlySip
-          )}
-        </span>
-      </p>
-    </div>
-  )}
-</div>
-
-</SectionCard>
-
-
-{/* ============================================================
-SECTION 4 : GOAL CONTRIBUTIONS
-============================================================ */}
-
-<SectionCard
-  icon="🎯"
-  title="Goal Contributions"
-  subtitle="Allocate Money Towards Goals"
-  accent="emerald"
->
-  <div className="space-y-4">
-
-    {form.goalContributions.map((contribution) => {
-
-      const selectedGoal = goals.find(
-        (goal) => goal.id === contribution.goalId
-      );
-
-      return (
+      {saveError && (
         <div
-          key={contribution.id}
-          className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+          role="alert"
+          className="fixed top-6 right-6 z-[100] max-w-md rounded-xl border border-amber-500/30 bg-amber-500/15 px-5 py-3.5 text-sm font-medium text-amber-200 shadow-lg shadow-amber-500/10 backdrop-blur-sm"
         >
+          ⚠ {saveError}
+        </div>
+      )}
 
-          <div className="grid gap-4 md:grid-cols-2">
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div className="absolute -top-40 right-1/4 h-[500px] w-[500px] rounded-full bg-blue-500/[0.04] blur-[120px]" />
+        <div className="absolute bottom-0 left-1/3 h-[300px] w-[400px] rounded-full bg-emerald-500/[0.03] blur-[100px]" />
+      </div>
 
-            {/* Goal Selection */}
-
-            <label className="block">
-
-              <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-                Goal
-              </span>
-
-              <select
-                value={contribution.goalId}
-                onChange={(e) => {
-
-                  const selected = goals.find(
-                    (goal) => goal.id === e.target.value
-                  );
-
-                  updateGoalContribution(
-                    contribution.id,
-                    "goalId",
-                    e.target.value
-                  );
-
-                  updateGoalContribution(
-                    contribution.id,
-                    "goalTitle",
-                    selected?.title ?? ""
-                  );
-
-                }}
-                className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
-              >
-
-                <option value="">
-                  Select a goal
-                </option>
-
-                {goals.map((goal) => (
-
-                  <option
-                    key={goal.id}
-                    value={goal.id}
-                  >
-                    {goal.title}
-                  </option>
-
-                ))}
-
-              </select>
-
-            </label>
-
-
-            {/* Contribution */}
-
-            <CurrencyInput
-              label="Contribution"
-              value={contribution.amount}
-              onChange={(value) =>
-                updateGoalContribution(
-                  contribution.id,
-                  "amount",
-                  value
-                )
-              }
-            />
-
+      <main className="relative mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+        <header className="mb-10">
+          <div className="mb-4 flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/10 text-2xl ring-1 ring-blue-500/20">
+              📊
+            </div>
+            <div>
+              <p className="font-mono text-xs tracking-[0.25em] uppercase text-zinc-500">
+                Monthly Financial Statement
+              </p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                {MONTHS[form.month - 1]} {form.year}
+              </h1>
+            </div>
           </div>
+          <p className="max-w-2xl text-base leading-relaxed text-zinc-400">
+            Record this month's financial activity. Portfolio values are managed
+            separately in the Portfolio module.
+          </p>
+        </header>
 
-
-          {/* Goal Information */}
-
-          {selectedGoal && (
-
-            <div className="mt-4 rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
-
-              <div className="flex items-center justify-between">
-
-                <span className="text-xs text-zinc-500">
-                  Current Saved
-                </span>
-
-                <span className="font-mono text-sm text-emerald-400">
-                  {formatINR(selectedGoal.currentAmount)}
-                </span>
-
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSave();
+          }}
+          className="space-y-6"
+        >
+          {/* MONTH INFORMATION */}
+          <SectionCard
+            icon="📅"
+            title="Month Information"
+            subtitle="Basic details"
+            accent="emerald"
+          >
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div>
+                <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                  Month
+                </label>
+                <select
+                  value={form.month}
+                  onChange={(e) =>
+                    handleMonthOrYearChange(Number(e.target.value), form.year)
+                  }
+                  className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 font-mono text-sm text-white focus:border-blue-500/40 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
+                >
+                  {MONTHS.map((monthName, index) => (
+                    <option key={monthName} value={index + 1}>
+                      {monthName}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="mt-2 flex items-center justify-between">
-
-                <span className="text-xs text-zinc-500">
-                  Target
-                </span>
-
-                <span className="font-mono text-sm text-zinc-300">
-                  {formatINR(selectedGoal.targetAmount)}
-                </span>
-
+              <div>
+                <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                  Year
+                </label>
+                <input
+                  type="number"
+                  value={form.year}
+                  onChange={(e) =>
+                    handleMonthOrYearChange(form.month, Number(e.target.value))
+                  }
+                  className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 font-mono text-sm text-white"
+                />
               </div>
-
             </div>
 
-          )}
+            <div className="mt-5">
+              <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                Financial Notes
+              </label>
+              <textarea
+                value={form.financialNotes}
+                onChange={(e) => updateField("financialNotes", e.target.value)}
+                rows={3}
+                className="w-full resize-none rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white"
+              />
+            </div>
 
+            <div className="mt-5">
+              <label className="mb-2 block font-mono text-[11px] uppercase tracking-wider text-zinc-500">
+                Important Decisions
+              </label>
+              <textarea
+                value={form.importantDecisions}
+                onChange={(e) => updateField("importantDecisions", e.target.value)}
+                rows={3}
+                className="w-full resize-none rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white"
+              />
+            </div>
+          </SectionCard>
 
-          {/* Remove */}
+          {/* INCOME */}
+          <SectionCard
+            icon="💰"
+            title="Income"
+            subtitle="Monthly inflows"
+            accent="emerald"
+          >
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <CurrencyInput
+                label="Salary (In Hand)"
+                value={form.income.salaryInHand}
+                onChange={(v) => updateIncomeField("salaryInHand", v)}
+              />
+              <CurrencyInput
+                label="Other Income"
+                value={form.income.otherIncome}
+                onChange={(v) => updateIncomeField("otherIncome", v)}
+              />
+            </div>
 
-          <div className="mt-3 flex justify-end">
+            <div className="mt-5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-5">
+              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-emerald-400">
+                Total Monthly Income
+              </p>
+              <p className="mt-2 text-3xl font-bold text-white">
+                {formatINR(totalIncome)}
+              </p>
+            </div>
+          </SectionCard>
 
-            <button
-              type="button"
-              onClick={() =>
-                removeGoalContribution(
-                  contribution.id
-                )
-              }
-              className="rounded-lg border border-red-900/50 px-3 py-2 text-xs font-medium text-red-400 transition hover:border-red-700 hover:bg-red-950/30"
-            >
-              Remove
-            </button>
+          {/* INVESTMENTS THIS MONTH */}
+          <SectionCard
+            icon="📈"
+            title="Investments This Month"
+            subtitle="Monthly Contributions"
+            accent="blue"
+          >
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <CurrencyInput
+                label="Mutual Fund SIP"
+                value={form.cashAllocation.investments}
+                onChange={(v) => updateCashAllocationField("investments", v)}
+              />
 
-          </div>
+              <div className="sm:col-span-2 rounded-xl border border-violet-500/30 bg-violet-500/10 p-5">
+                <div className="mb-4">
+                  <p className="font-mono text-xs font-semibold uppercase tracking-wider text-violet-300">
+                    Annual SIP Step-Up
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    January sets the annual plan. The selected plan is carried through the rest of the year.
+                  </p>
+                </div>
 
-        </div>
+                {form.month === 1 ? (
+                  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+                        Planned Step-Up for This Year
+                      </span>
+                      <select
+                        value={form.sipStepUp.plannedPercent}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            sipStepUp: { ...prev.sipStepUp, plannedPercent: e.target.value },
+                          }))
+                        }
+                        className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 font-mono text-sm text-white focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
+                      >
+                        <option value="">Select a plan</option>
+                        {SIP_STEP_UP_OPTIONS.map((percent) => (
+                          <option key={percent} value={percent}>{percent}%</option>
+                        ))}
+                      </select>
+                    </label>
 
-      );
+                    <label className="block">
+                      <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+                        Was Step-Up Applied This Month?
+                      </span>
+                      <select
+                        value={form.sipStepUp.appliedThisMonth}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            sipStepUp: {
+                              ...prev.sipStepUp,
+                              appliedThisMonth: e.target.value as "Yes" | "No" | "Not Applicable",
+                            },
+                          }))
+                        }
+                        className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white focus:border-violet-500/40 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
+                      >
+                        <option value="Not Applicable">Not Applicable</option>
+                        <option value="Yes">Yes — Step-Up Applied</option>
+                        <option value="No">No — Step-Up Not Applied</option>
+                      </select>
+                    </label>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-violet-500/20 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-300">
+                    {annualSipPlan
+                      ? `January ${form.year} plan: ${annualSipPlan}% SIP step-up. This plan is locked for the rest of the year.`
+                      : `No January ${form.year} SIP plan has been recorded yet. Select January to create the annual plan.`}
+                  </div>
+                )}
 
-    })}
+                {form.month === 12 && (
+                  <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                    <span className="font-semibold">ATHENA reminder:</span> January SIP step-up planning is next month. Review your cash flow and choose a 10%, 15%, or 20% plan.
+                  </div>
+                )}
+              </div>
 
+              <CurrencyInput
+                label="PPF Contribution"
+                value={form.assets.ppf}
+                onChange={(v) => updateAssetField("ppf", v)}
+              />
 
-    {/* Add Goal */}
+              <CurrencyInput
+                label="Stocks Purchased"
+                value={form.assets.cash}
+                onChange={(v) => updateAssetField("cash", v)}
+              />
 
-    <button
-      type="button"
-      onClick={addGoalContribution}
-      className="w-full rounded-xl border border-dashed border-zinc-700 bg-zinc-900/30 px-4 py-3 text-sm font-medium text-zinc-400 transition hover:border-emerald-500/50 hover:bg-zinc-900/60 hover:text-emerald-400"
-    >
-      + Add Goal Contribution
-    </button>
+              <CurrencyInput
+                label="NPS Contribution"
+                value={form.assets.nps}
+                onChange={(v) => updateAssetField("nps", v)}
+              />
+            </div>
+          </SectionCard>
 
-  </div>
+          {/* GOAL CONTRIBUTIONS */}
+          <SectionCard
+            icon="🎯"
+            title="Goal Contributions"
+            subtitle="Allocate Money Towards Goals"
+            accent="emerald"
+          >
+            <div className="space-y-4">
+              {form.goalContributions.map((contribution) => {
+                const selectedGoal = goals.find(
+                  (goal) => goal.id === contribution.goalId
+                );
 
-</SectionCard>
+                return (
+                  <div
+                    key={contribution.id}
+                    className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
+                  >
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="block">
+                        <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+                          Goal
+                        </span>
+                        <select
+                          value={contribution.goalId}
+                          onChange={(e) => {
+                            const selected = goals.find(
+                              (goal) => goal.id === e.target.value
+                            );
+                            updateGoalContribution(
+                              contribution.id,
+                              "goalId",
+                              e.target.value
+                            );
+                            updateGoalContribution(
+                              contribution.id,
+                              "goalTitle",
+                              selected?.title ?? ""
+                            );
+                          }}
+                          className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-4 py-3 text-sm text-white focus:border-emerald-500/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/20"
+                        >
+                          <option value="">Select a goal</option>
+                          {goals.map((goal) => (
+                            <option key={goal.id} value={goal.id}>
+                              {goal.title}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
 
-{/* ============================================================
-    SECTION 4 : CASH ALLOCATION
-============================================================ */}
+                      <CurrencyInput
+                        label="Contribution"
+                        value={contribution.amount}
+                        onChange={(value) =>
+                          updateGoalContribution(
+                            contribution.id,
+                            "amount",
+                            value
+                          )
+                        }
+                      />
+                    </div>
 
-<SectionCard
-  icon="💵"
-  title="Cash Allocation"
-  subtitle="Where the remaining money went"
-  accent="blue"
->
+                    {selectedGoal && (
+                      <div className="mt-4 rounded-lg border border-zinc-800/60 bg-zinc-950/40 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-zinc-500">Current Saved</span>
+                          <span className="font-mono text-sm text-emerald-400">
+                            {formatINR(selectedGoal.currentAmount)}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className="text-xs text-zinc-500">Target</span>
+                          <span className="font-mono text-sm text-zinc-300">
+                            {formatINR(selectedGoal.targetAmount)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
-  <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => removeGoalContribution(contribution.id)}
+                        className="rounded-lg border border-red-900/50 px-3 py-2 text-xs font-medium text-red-400 transition hover:border-red-700 hover:bg-red-950/30"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
 
-    <CurrencyInput
-      label="Emergency Fund Added"
-      value={form.cashAllocation.emergencyFund}
-      onChange={(v) =>
-        updateCashAllocationField("emergencyFund", v)
-      }
-    />
+              <button
+                type="button"
+                onClick={addGoalContribution}
+                className="w-full rounded-xl border border-dashed border-zinc-700 bg-zinc-900/30 px-4 py-3 text-sm font-medium text-zinc-400 transition hover:border-emerald-500/50 hover:bg-zinc-900/60 hover:text-emerald-400"
+              >
+                + Add Goal Contribution
+              </button>
+            </div>
+          </SectionCard>
 
-    <CurrencyInput
-      label="Savings / Running Account Added"
-      value={form.cashAllocation.savingsAccount}
-      onChange={(v) =>
-        updateCashAllocationField("savingsAccount", v)
-      }
-    />
+          {/* CASH ALLOCATION */}
+          <SectionCard
+            icon="💵"
+            title="Cash Allocation"
+            subtitle="Where the remaining money went"
+            accent="blue"
+          >
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <CurrencyInput
+                label="Emergency Fund Added"
+                value={form.cashAllocation.emergencyFund}
+                onChange={(v) => updateCashAllocationField("emergencyFund", v)}
+              />
+              <CurrencyInput
+                label="Savings / Running Account Added"
+                value={form.cashAllocation.savingsAccount}
+                onChange={(v) => updateCashAllocationField("savingsAccount", v)}
+              />
+              <CurrencyInput
+                label="Home Loan Prepayment"
+                value={form.cashAllocation.homeLoanPrepayment}
+                onChange={(v) => updateCashAllocationField("homeLoanPrepayment", v)}
+              />
+              <CurrencyInput
+                label="Monthly Expenses"
+                value={form.cashAllocation.monthlyExpenses}
+                onChange={(v) => updateCashAllocationField("monthlyExpenses", v)}
+              />
+              <CurrencyInput
+                label="Cash Remaining"
+                value={form.cashAllocation.cashRemaining}
+                onChange={(v) => updateCashAllocationField("cashRemaining", v)}
+              />
+            </div>
+            <BalanceWarning
+              isBalanced={cashAllocationCheck.isBalanced}
+              difference={cashAllocationCheck.difference}
+            />
+          </SectionCard>
 
-    <CurrencyInput
-      label="Home Loan Prepayment"
-      value={form.cashAllocation.homeLoanPrepayment}
-      onChange={(v) =>
-        updateCashAllocationField("homeLoanPrepayment", v)
-      }
-    />
-
-    <CurrencyInput
-      label="Monthly Expenses"
-      value={form.cashAllocation.monthlyExpenses}
-      onChange={(v) =>
-        updateCashAllocationField("monthlyExpenses", v)
-      }
-    />
-
-    <CurrencyInput
-      label="Cash Remaining"
-      value={form.cashAllocation.cashRemaining}
-      onChange={(v) =>
-        updateCashAllocationField("cashRemaining", v)
-      }
-    />
-
-  </div>
-
-  <BalanceWarning
-    isBalanced={cashAllocationCheck.isBalanced}
-    difference={cashAllocationCheck.difference}
-  />
-
-</SectionCard>
-
-          {/* Section 5: Expenses */}
+          {/* EXPENSES */}
           <SectionCard icon="🧾" title="Expenses" subtitle="Categorized spending" accent="rose">
             <div className="space-y-6">
-              {/* Household */}
               <div>
                 <h3 className="mb-3 font-mono text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                   Household
@@ -1345,7 +954,6 @@ SECTION 4 : GOAL CONTRIBUTIONS
                 </div>
               </div>
 
-              {/* Lifestyle */}
               <div>
                 <h3 className="mb-3 font-mono text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                   Lifestyle
@@ -1402,7 +1010,6 @@ SECTION 4 : GOAL CONTRIBUTIONS
                 </div>
               </div>
 
-              {/* Travel */}
               <div>
                 <h3 className="mb-3 font-mono text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                   Travel
@@ -1443,7 +1050,6 @@ SECTION 4 : GOAL CONTRIBUTIONS
                 </div>
               </div>
 
-              {/* Family */}
               <div>
                 <h3 className="mb-3 font-mono text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                   Family
@@ -1484,7 +1090,6 @@ SECTION 4 : GOAL CONTRIBUTIONS
                 </div>
               </div>
 
-              {/* Misc */}
               <div>
                 <h3 className="mb-3 font-mono text-xs font-semibold text-zinc-400 uppercase tracking-wider">
                   Miscellaneous
@@ -1525,56 +1130,26 @@ SECTION 4 : GOAL CONTRIBUTIONS
               </div>
             </div>
           </SectionCard>
-{/* ============================================================
-    PORTFOLIO INFORMATION
-============================================================ */}
 
-<SectionCard
-  icon="🏦"
-  title="Portfolio"
-  subtitle="Managed separately"
-  accent="violet"
->
-  <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-6">
+          {/* PORTFOLIO INFORMATION */}
+          <SectionCard
+            icon="🏦"
+            title="Portfolio"
+            subtitle="Managed separately"
+            accent="violet"
+          >
+            <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-6">
+              <h3 className="text-lg font-semibold text-white">
+                Portfolio is now managed separately
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-zinc-400">
+                ATHENA now keeps your investments, assets and liabilities
+                inside the Portfolio module.
+              </p>
+            </div>
+          </SectionCard>
 
-    <h3 className="text-lg font-semibold text-white">
-      Portfolio is now managed separately
-    </h3>
-
-    <p className="mt-3 text-sm leading-7 text-zinc-400">
-
-      ATHENA now keeps your investments, assets and liabilities
-      inside the Portfolio module.
-
-    </p>
-
-    <div className="mt-5 space-y-2 text-sm text-zinc-300">
-
-      <p>✓ Assets are updated from Portfolio.</p>
-
-      <p>✓ Liabilities are updated from Portfolio.</p>
-
-      <p>✓ Net Worth is calculated automatically.</p>
-
-      <p>✓ Dashboard reads directly from Portfolio.</p>
-
-    </div>
-
-    <div className="mt-6 rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-
-      <p className="text-sm text-emerald-300">
-
-        Monthly Statement records this month's activity only.
-
-      </p>
-
-    </div>
-
-  </div>
-
-</SectionCard>
-
-          {/* Section 10: Decision Journal */}
+          {/* DECISION JOURNAL */}
           <SectionCard icon="✍️" title="Decision Journal" subtitle="Track financial decisions" accent="emerald">
             <div className="space-y-4">
               {form.decisionJournal.map((decision) => (
@@ -1639,7 +1214,7 @@ SECTION 4 : GOAL CONTRIBUTIONS
             </div>
           </SectionCard>
 
-          {/* Save button */}
+          {/* SAVE BUTTON */}
           <div className="pt-2 pb-8">
             <button
               type="submit"

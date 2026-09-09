@@ -5,6 +5,7 @@
 import type {
   Goal,
   GoalSummary,
+  CalculatedGoal,
 } from "./types";
 
 import {
@@ -15,8 +16,16 @@ import {
   getTotalGoalContributions,
 } from "./goal-ledger";
 
+import {
+  calculateEmergencyFundGoal,
+  calculateHomeLoanGoal,
+  calculateInvestmentGoal,
+  calculateNetWorthGoal,
+  calculateRetirementGoal,
+} from "./calculations";
+
 // -----------------------------------------------------
-// Calculate A Single Goal
+// Calculate A Single Persisted Goal
 // -----------------------------------------------------
 
 function calculateGoal(goal: Goal): Goal {
@@ -56,17 +65,14 @@ function calculateGoal(goal: Goal): Goal {
 
   return {
     ...goal,
-
     currentAmount,
-
     progress,
-
     status,
   };
 }
 
 // -----------------------------------------------------
-// Main Goal Engine
+// Main Persisted Goal Engine
 // -----------------------------------------------------
 
 export function getGoals(): Goal[] {
@@ -78,7 +84,7 @@ export function getGoals(): Goal[] {
 }
 
 // -----------------------------------------------------
-// Get One Goal
+// Get One Persisted Goal
 // -----------------------------------------------------
 
 export function getGoalById(
@@ -118,7 +124,8 @@ export function getGoalSummary(): GoalSummary {
     behindGoals:
       goals.filter(
         (goal) =>
-          goal.status === "Behind Schedule"
+          goal.status ===
+          "Behind Schedule"
       ).length,
 
     averageProgress:
@@ -170,4 +177,81 @@ export function getGoalInsights(): string[] {
   }
 
   return insights;
+}
+
+// -----------------------------------------------------
+// System Financial Goals
+// -----------------------------------------------------
+
+export type SystemGoalInputs = {
+  emergencyFund: number;
+  monthlyExpenses: number;
+  homeLoanOutstanding: number;
+  monthlyInvestment: number;
+  currentNetWorth: number;
+  currentRetirementCorpus: number;
+
+  /**
+   * Retirement target is supplied by the
+   * Retirement Engine so the Goal Engine
+   * does not maintain a competing FIRE target.
+   */
+  retirementTargetCorpus: number;
+
+  /**
+   * Optional overrides for system goal targets.
+   */
+  emergencyFundTargetMonths?: number;
+  homeLoanTargetOutstanding?: number;
+  monthlyInvestmentTarget?: number;
+  netWorthTarget?: number;
+};
+
+export type SystemGoals = {
+  emergencyFund: CalculatedGoal;
+  homeLoan: CalculatedGoal;
+  investment: CalculatedGoal;
+  netWorth: CalculatedGoal;
+  retirement: CalculatedGoal;
+};
+
+// -----------------------------------------------------
+// Calculate System Financial Goals
+// -----------------------------------------------------
+
+export function getSystemGoals(
+  inputs: SystemGoalInputs
+): SystemGoals {
+  return {
+    emergencyFund:
+      calculateEmergencyFundGoal(
+        inputs.emergencyFund,
+        inputs.monthlyExpenses,
+        inputs.emergencyFundTargetMonths
+      ),
+
+    homeLoan:
+      calculateHomeLoanGoal(
+        inputs.homeLoanOutstanding,
+        inputs.homeLoanTargetOutstanding
+      ),
+
+    investment:
+      calculateInvestmentGoal(
+        inputs.monthlyInvestment,
+        inputs.monthlyInvestmentTarget
+      ),
+
+    netWorth:
+      calculateNetWorthGoal(
+        inputs.currentNetWorth,
+        inputs.netWorthTarget
+      ),
+
+    retirement:
+      calculateRetirementGoal(
+        inputs.currentRetirementCorpus,
+        inputs.retirementTargetCorpus
+      ),
+  };
 }

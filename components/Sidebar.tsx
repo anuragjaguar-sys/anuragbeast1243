@@ -6,13 +6,14 @@ import { usePathname } from "next/navigation";
 const navItems = [
   // Core
   { href: "/", label: "Dashboard", icon: "🏠" },
+  { href: "/household", label: "Household View", icon: "👨‍👩‍👧‍👦" },
   { href: "/monthly-entry", label: "Monthly Entry", icon: "📝" },
   { href: "/profile", label: "Financial Profile", icon: "👤" },
 
   // Wealth
-{ href: "/portfolio", label: "Portfolio", icon: "💼" },
-{ href: "/goals", label: "Goals", icon: "🎯" },
-{ href: "/spending-analytics", label: "Spending Analytics", icon: "💳" },
+  { href: "/portfolio", label: "Portfolio", icon: "💼" },
+  { href: "/goals", label: "Goals", icon: "🎯" },
+  { href: "/spending-analytics", label: "Spending Analytics", icon: "💳" },
 
   // Intelligence
   { href: "/reports", label: "Reports", icon: "📊" },
@@ -21,6 +22,7 @@ const navItems = [
   // Settings
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
+
 function isActive(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   return pathname.startsWith(href);

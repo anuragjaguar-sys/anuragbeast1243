@@ -19,9 +19,11 @@ export interface RetirementAssumptions {
   annualSipIncrease: number;
   expectedAnnualIncrement: number;
 
-  // Returns
+  // Returns & Volatility (Monte Carlo)
   equityReturn: number;
+  equityVolatility: number;
   debtReturn: number;
+  debtVolatility: number;
   inflationRate: number;
   withdrawalRate: number;
 
@@ -34,7 +36,14 @@ export interface YearProjection {
   age: number;
   year: number;
 
+  // Deterministic baseline
   corpus: number;
+  
+  // Monte Carlo Percentile Bands
+  corpus10?: number;
+  corpus50?: number;
+  corpus90?: number;
+
   mutualFunds: number;
   ppf: number;
   epf: number;
@@ -62,6 +71,9 @@ export interface RetirementProjection {
   fireReadiness: number;
   surplus: number;
   monthlyIncomeGap: number;
+  
+  // Monte Carlo probability of hitting the target
+  probabilityOfSuccess: number;
 
   status:
     | "Excellent"

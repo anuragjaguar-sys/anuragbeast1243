@@ -1,10 +1,12 @@
 "use client";
 
-import { generateActions, getTopPriorityAction } from "@/lib/intelligence/action-engine";
+export interface AthenaActionCardProps {
+  actions: any[];
+  topAction: any | null;
+}
 
-export default function AthenaActionCard() {
-  const actions = generateActions();
-  const top = getTopPriorityAction(actions);
+export default function AthenaActionCard({ actions, topAction }: AthenaActionCardProps) {
+  if (!actions) return null;
 
   function statusBadge(status: string) {
     const base = "inline-flex items-center gap-2 rounded-full px-2 py-0.5 text-xs font-medium tracking-wide";
@@ -29,7 +31,7 @@ export default function AthenaActionCard() {
             <p className="mt-1 text-[11px] tracking-[0.18em] text-zinc-400 uppercase">Recommended next steps</p>
           </div>
           <div className="text-sm">
-            {top ? (
+            {topAction ? (
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-emerald-400" />
                 <span className="font-semibold text-zinc-200">Current Priority</span>
@@ -40,19 +42,19 @@ export default function AthenaActionCard() {
           </div>
         </div>
 
-        {top && (
+        {topAction && (
           <div className="mt-4 rounded-xl border border-zinc-800/70 bg-zinc-900/60 p-3">
-            <p className="text-lg font-semibold text-white">{top.title}</p>
+            <p className="text-lg font-semibold text-white">{topAction.title}</p>
             <div className="mt-2 flex items-center gap-3">
               <div className="text-xs text-zinc-400">Category</div>
-              <div className="text-sm text-zinc-200">{top.category}</div>
-              <div className="ml-4">{statusBadge(top.priority)}</div>
-              <div className="ml-auto">{actionStatusBadge(top.status)}</div>
+              <div className="text-sm text-zinc-200">{topAction.category}</div>
+              <div className="ml-4">{statusBadge(topAction.priority)}</div>
+              <div className="ml-auto">{actionStatusBadge(topAction.status)}</div>
             </div>
 
             <div className="mt-3 text-sm text-zinc-300">
               <p className="font-mono text-[10px] text-zinc-500 uppercase">Impact</p>
-              <p className="mt-1 text-zinc-200">{top.impact}</p>
+              <p className="mt-1 text-zinc-200">{topAction.impact}</p>
             </div>
           </div>
         )}

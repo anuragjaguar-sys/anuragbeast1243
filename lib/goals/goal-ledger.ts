@@ -1,83 +1,48 @@
 // =========================================
-// ATHENA Goal Ledger
+// ATHENA Goal Ledger (Unified via StorageManager)
 // =========================================
 
+import { StorageManager } from "@/lib/core/storage-manager";
+import { CloudSyncService } from "@/lib/core/sync-service";
+
 export interface GoalLedgerEntry {
-  id: string;
-
+  id?: string;
   goalId: string;
-
-  goalTitle: string;
-
-  amount: number;
-
+  goalTitle?: string;
+  amount?: number;
+  allocatedAmount?: number;
   month: number;
-
   year: number;
-
-  date: string;
-
+  date?: string;
   notes?: string;
 }
 
-const STORAGE_KEY = "athena-goal-ledger";
-
-// ----------------------------------------
-// Load Ledger
-// ----------------------------------------
+const PRIMARY_KEY = StorageManager.KEYS.GOAL_LEDGER;
+const LEGACY_KEY = "athena-goal-ledger";
 
 export function loadGoalLedger(): GoalLedgerEntry[] {
-  if (typeof window === "undefined") {
-    return [];
+  const ledger = StorageManager.get<GoalLedgerEntry[]>(PRIMARY_KEY, []);
+  if (Array.isArray(ledger) && ledger.length > 0) {
+    return ledger;
   }
 
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-
-    if (!saved) {
-      return [];
-    }
-
-    const parsed = JSON.parse(saved);
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed as GoalLedgerEntry[];
-  } catch {
-    return [];
+  const legacyLedger = StorageManager.get<GoalLedgerEntry[]>(LEGACY_KEY, []);
+  if (Array.isArray(legacyLedger) && legacyLedger.length > 0) {
+    StorageManager.set(PRIMARY_KEY, legacyLedger);
+    return legacyLedger;
   }
+
+  return [];
 }
 
-// ----------------------------------------
-// Save Ledger
-// ----------------------------------------
-
-export function saveGoalLedger(
-  ledger: GoalLedgerEntry[]
-): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(ledger)
-  );
+export function saveGoalLedger(ledger: GoalLedgerEntry[]): void {
+  StorageManager.set(PRIMARY_KEY, ledger);
+  void CloudSyncService.pushStore("goalLedger", ledger);
 }
 
-// ----------------------------------------
-// Add / Update Monthly Contribution
-// ----------------------------------------
-
-export function saveGoalContribution(
-  entry: GoalLedgerEntry
-): void {
+export function saveGoalContribution(entry: GoalLedgerEntry): void {
   const ledger = loadGoalLedger();
 
-  // A goal should have only ONE contribution
-  // for a particular month/year.
   const existingIndex = ledger.findIndex(
     (item) =>
       item.goalId === entry.goalId &&
@@ -86,7 +51,10 @@ export function saveGoalContribution(
   );
 
   if (existingIndex >= 0) {
-    ledger[existingIndex] = entry;
+    ledger[existingIndex] = {
+      ...ledger[existingIndex],
+      ...entry,
+    };
   } else {
     ledger.push(entry);
   }
@@ -94,77 +62,20 @@ export function saveGoalContribution(
   saveGoalLedger(ledger);
 }
 
-// ----------------------------------------
-// Get Contributions For A Goal
-// ----------------------------------------
-
-export function getGoalContributions(
-  goalId: string
-): GoalLedgerEntry[] {
-  return loadGoalLedger().filter(
-    (entry) => entry.goalId === goalId
-  );
-}
-
-// ----------------------------------------
-// Get Total Contributions For A Goal
-// ----------------------------------------
-
-export function getTotalGoalContributions(
-  goalId: string
-): number {
-  return getGoalContributions(goalId).reduce(
-    (total, entry) =>
-      total + Number(entry.amount || 0),
-    0
-  );
-}
-
-// ----------------------------------------
-// Get Goal Contribution For A Month
-// ----------------------------------------
-
-export function getMonthlyGoalContribution(
-  goalId: string,
+export function getContributionsForMonth(
   month: number,
   year: number
-): number {
-  const entry = loadGoalLedger().find(
-    (item) =>
-      item.goalId === goalId &&
-      item.month === month &&
-      item.year === year
-  );
-
-  return entry
-    ? Number(entry.amount || 0)
-    : 0;
-}
-
-// ----------------------------------------
-// Delete A Goal's Ledger
-// ----------------------------------------
-
-export function deleteGoalLedger(
-  goalId: string
-): void {
+): GoalLedgerEntry[] {
   const ledger = loadGoalLedger();
-
-  const updatedLedger = ledger.filter(
-    (entry) => entry.goalId !== goalId
-  );
-
-  saveGoalLedger(updatedLedger);
+  return ledger.filter((item) => item.month === month && item.year === year);
 }
 
-// ----------------------------------------
-// Clear Entire Ledger
-// ----------------------------------------
-
-export function clearGoalLedger(): void {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  localStorage.removeItem(STORAGE_KEY);
+export function getTotalGoalContributions(goalId: string): number {
+  const ledger = loadGoalLedger();
+  return ledger
+    .filter((entry) => entry.goalId === goalId)
+    .reduce((sum, entry) => {
+      const val = entry.amount ?? entry.allocatedAmount ?? 0;
+      return sum + (Number(val) || 0);
+    }, 0);
 }
