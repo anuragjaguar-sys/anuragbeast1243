@@ -10,7 +10,7 @@ export const DEFAULT_FINANCIAL_PROFILE: FinancialProfile = {
 
   income: {
     monthlySalary: 150000,
-    monthlyInvestment: 100000,
+    monthlyInvestment: 20000,
     annualIncrement: 0.05,
     monthlyPension: 100000,
   },

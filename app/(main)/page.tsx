@@ -40,6 +40,7 @@ import ScenarioStressTestCard from "@/components/dashboard/ScenarioStressTestCar
 import LifeEventSimulatorCard from "@/components/dashboard/LifeEventSimulatorCard";
 import FinancialDisciplineCard from "@/components/dashboard/FinancialDisciplineCard";
 import RetirementCard from "@/components/dashboard/RetirementCard";
+import CFOExecutivePlaybookCard from "@/components/dashboard/CFOExecutivePlaybookCard";
 import RetirementGrowthChart from "@/components/dashboard/RetirementGrowthChart";
 import NetWorthCard from "@/components/dashboard/NetWorthCard";
 import AthenaCFOCard from "@/components/dashboard/AthenaCFOCard";
@@ -345,6 +346,11 @@ export default function Home() {
               )
             ))}
           </div>
+        </section>
+
+        {/* STRATEGIC ADVISORY: EXECUTIVE CFO PLAYBOOK */}
+        <section className="mb-8">
+          <CFOExecutivePlaybookCard statement={monthlyReviewData} />
         </section>
 
         {/* TIER 2: CORE WEALTH ENGINES */}
