@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
+import Link from "next/link";
 import { useProfile } from "@/lib/profile/profile-context";
 import { getRetirementAssumptionsFromProfile } from "@/lib/profile/profile-retirement-adapter";
 import { generateExecutivePlaybook } from "@/lib/intelligence/cfo-playbook";
@@ -81,7 +82,7 @@ export default function CFOExecutivePlaybookCard({ statement }: { statement?: an
           </div>
           <div className="border-l border-zinc-800 pl-3">
             <p className="text-[10px] uppercase font-mono tracking-wider text-rose-400">Loan Prepay</p>
-            <p className="text-base font-bold text-white">{formatINR(audit.homeLoanPrepayment)}</p>
+            <Link href="/home-loan" className="text-base font-bold text-white hover:text-rose-400 transition-colors flex items-center gap-1">{formatINR(audit.homeLoanPrepayment)} <span className="text-[10px] text-zinc-500">↗</span></Link>
             <p className="text-[9px] text-zinc-500">Tenure reduction</p>
           </div>
           <div className="border-l border-zinc-800 pl-3">
