@@ -17,18 +17,6 @@ export default function DailyReflectionCard() {
   const [gratitude, setGratitude] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    loadData();
-
-    // Listen for behaviour profile updates
-    const handleUpdate = () => {
-      loadData();
-    };
-
-    window.addEventListener('behaviourProfileUpdated', handleUpdate);
-    return () => window.removeEventListener('behaviourProfileUpdated', handleUpdate);
-  }, []);
-
   const loadData = () => {
     setHasReflectedToday(hasReflectionToday());
     const today = new Date().toISOString().split('T')[0];
@@ -40,6 +28,18 @@ export default function DailyReflectionCard() {
       setGratitude(reflection.gratitude);
     }
   };
+
+  useEffect(() => {
+    void Promise.resolve().then(() => loadData());
+
+    // Listen for behaviour profile updates
+    const handleUpdate = () => {
+      void Promise.resolve().then(() => loadData());
+    };
+
+    window.addEventListener('behaviourProfileUpdated', handleUpdate);
+    return () => window.removeEventListener('behaviourProfileUpdated', handleUpdate);
+  }, []);
 
   const handleSave = async () => {
     if (!bestDecision.trim() || !temptationResisted.trim() || !gratitude.trim()) {
@@ -55,7 +55,7 @@ export default function DailyReflectionCard() {
       });
       setHasReflectedToday(true);
       setIsOpen(false);
-      loadData();
+      void Promise.resolve().then(() => loadData());
     } catch (error) {
       console.error("Failed to save reflection:", error);
     } finally {

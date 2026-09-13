@@ -110,7 +110,7 @@ export function generateBehaviourInsights(
 ): BehaviourInsight {
   const currentStreak = calculateCurrentStreak(profile.lastTradeDate);
   const monthlyScore = currentMonthHabits ? getMonthlyDisciplineScore(currentMonthHabits) : 0;
-  const completion = currentMonthHabits ? getHabitCompletionPercentage(currentMonthHabits) : 0;
+  const _completion = currentMonthHabits ? getHabitCompletionPercentage(currentMonthHabits) : 0;
   const trend = getBehaviourTrend(monthlyScores);
 
   let message = "";

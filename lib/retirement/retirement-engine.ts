@@ -1,19 +1,43 @@
-import { generateRetirementProjection } from "./projection";
-import { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
-import type { RetirementAssumptions } from "./assumptions";
+/**
+ * FIRE54 Centralized Retirement Engine (Single Source of Truth)
+ * Consolidates baseline projections, Monte Carlo simulations, dynamic loan payoffs,
+ * and gap intelligence into a unified domain API.
+ */
 
-export { DEFAULT_RETIREMENT_ASSUMPTIONS };
-export type { RetirementAssumptions };
-
+// 1. Core types and assumptions
 export type * from "./types";
-export * from "./projection";
+export { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
+export type { RetirementAssumptions } from "./assumptions";
+
+// 2. Calculations & Primitives
 export * from "./calculations";
 
+// 3. Projections & Scenarios
+export * from "./projection";
+
+// 4. Dynamic Cashflow & Prepayment Engine
+export * from "./dynamic-retirement-engine";
+
+// 5. Gap Intelligence & Athena Analytics
+export * from "./gap-intelligence-engine";
+
+// 6. Portfolio Asset Adapter
+export * from "./portfolio-asset-adapter";
+
+import { generateRetirementProjection } from "./projection";
+import { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
+
+/**
+ * Standard accessor for deterministic & Monte Carlo retirement projections.
+ */
 export const getRetirementProjection = (inputs: any, overrides?: any) => {
   const merged = overrides ? { ...(inputs || {}), ...overrides } : inputs;
   return generateRetirementProjection(merged);
 };
 
+/**
+ * Generates triple-scenario sensitivity projections (Conservative, Base, Aggressive).
+ */
 export function generateRetirementScenarios(inputs: any) {
   const baseAssumptions = {
     ...DEFAULT_RETIREMENT_ASSUMPTIONS,

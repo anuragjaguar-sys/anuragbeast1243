@@ -1,15 +1,22 @@
-export interface DashboardData {
-  profile: any;
-  retirement: any;
-  behaviour: any;
-  wealth: any;
+export interface NetWorthMetric {
+  current: number;
+  monthlyChange: number;
+  history: Array<{ date: string; value: number }>;
+}
 
-  kpis: {
-    netWorth: number;
-    retirementCorpus: number;
-    fireReadiness: number;
-    wealthScore: number;
-  };
+export interface RetirementSummaryMetric {
+  targetCorpus: number;
+  projectedCorpus: number;
+  readinessPercentage: number;
+  yearsLeft: number;
+  monthlyRequiredSIP: number;
+}
 
-  quickInsights: string[];
+export interface DashboardViewModel {
+  netWorth: NetWorthMetric;
+  retirement: RetirementSummaryMetric;
+  disciplineScore: number;
+  activeGoalsCount: number;
+  totalLiquidAssets: number;
+  hasHydrated: boolean;
 }

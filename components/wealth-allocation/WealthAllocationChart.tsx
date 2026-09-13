@@ -4,16 +4,21 @@ interface WealthAllocationChartProps {
   buckets: WealthBucket[];
 }
 
+interface ChartSegment {
+  bucket: WealthBucket;
+  path: string;
+  percentage: number;
+  endPercentage: number;
+}
+
 export default function WealthAllocationChart({ buckets }: WealthAllocationChartProps) {
   // Calculate SVG pie chart
   const total = buckets.reduce((sum, bucket) => sum + bucket.amount, 0);
-  let cumulativePercentage = 0;
 
-  const segments = buckets.map((bucket) => {
+  const segments = buckets.reduce<ChartSegment[]>((acc, bucket) => {
+    const startPercentage = acc.length > 0 ? acc[acc.length - 1].endPercentage : 0;
     const percentage = total > 0 ? (bucket.amount / total) * 100 : 0;
-    const startPercentage = cumulativePercentage;
-    cumulativePercentage += percentage;
-    const endPercentage = cumulativePercentage;
+    const endPercentage = startPercentage + percentage;
 
     // Convert to radians
     const startAngle = (startPercentage / 100) * 2 * Math.PI - Math.PI / 2;
@@ -33,12 +38,15 @@ export default function WealthAllocationChart({ buckets }: WealthAllocationChart
       ? `M 50 50 m -40 0 a 40 40 0 1 0 80 0 a 40 40 0 1 0 -80 0`
       : `M 50 50 L ${x1} ${y1} A 40 40 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
 
-    return {
+    acc.push({
       bucket,
       path,
       percentage,
-    };
-  });
+      endPercentage,
+    });
+
+    return acc;
+  }, []);
 
   const colorMap: Record<string, string> = {
     "Wealth Creation": "#10b981",
@@ -65,7 +73,7 @@ export default function WealthAllocationChart({ buckets }: WealthAllocationChart
               <path
                 key={index}
                 d={segment.path}
-                fill={colorMap[segment.bucket.name]}
+                fill={colorMap[segment.bucket.name] || "#71717a"}
                 stroke="#18181b"
                 strokeWidth="0.5"
                 className="transition-opacity duration-200 hover:opacity-80"
@@ -85,7 +93,7 @@ export default function WealthAllocationChart({ buckets }: WealthAllocationChart
               <div className="flex items-center gap-3">
                 <div
                   className="h-3 w-3 rounded-full"
-                  style={{ backgroundColor: colorMap[bucket.name] }}
+                  style={{ backgroundColor: colorMap[bucket.name] || "#71717a" }}
                 />
                 <span className="text-sm text-zinc-300">{bucket.name}</span>
               </div>

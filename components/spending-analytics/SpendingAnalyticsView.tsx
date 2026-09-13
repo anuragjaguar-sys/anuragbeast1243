@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { loadMonthlyReview } from "@/lib/storage";
+import { } from "@/lib/storage";
 import { formatINR } from "@/lib/financial-engine";
 
 export default function SpendingAnalyticsCard() {

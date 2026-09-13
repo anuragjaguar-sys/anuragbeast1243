@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import Link from "next/link";
 import PortfolioSummary from "@/components/portfolio/PortfolioSummary";
@@ -11,8 +11,7 @@ import {
   Asset,
   Liability,
   PortfolioItem,
-  getPortfolio,
-  saveCurrentPortfolio,
+    saveCurrentPortfolio,
 } from "@/lib/investments";
 
 export default function PortfolioPage() {
@@ -21,9 +20,7 @@ export default function PortfolioPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] =
   useState<PortfolioItem | null>(null);
-useEffect(() => {
-  setPortfolio(getPortfolio());
-}, []);
+// hydrated via lazy state
   const handleSave = (
   item: Asset | Liability
 ) => {

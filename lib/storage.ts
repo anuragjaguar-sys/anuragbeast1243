@@ -3,7 +3,7 @@ import {
   getMonthKey,
   getMonthLabel,
   type MonthlyFinancialStatement,
-  INITIAL_MONTHLY_FINANCIAL_STATEMENT,
+  
 } from "./monthly-review";
 
 // Temporary type for migration only
@@ -137,11 +137,8 @@ export function migrateToNewFormat(): void {
   if (!isBrowser()) return;
 
   try {
-    const raw = StorageManager.get<string | null>(STORAGE_KEY, null);
-    if (!raw) return;
-
-    // Parse as unknown first since it might be legacy format
-    const store: unknown = JSON.parse(raw);
+    const store: unknown = StorageManager.get<unknown>(STORAGE_KEY, null);
+    if (!store) return;
     let needsMigration = false;
 
     // Check if it's legacy format (has netSalary in data)

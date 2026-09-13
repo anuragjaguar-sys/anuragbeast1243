@@ -3,7 +3,7 @@ import {
   getBehaviourProfile,
   getRecoverySummary,
 } from "@/lib/behaviour-engine";
-import { getRetirementGapAnalysis } from "@/lib/retirement/gap-intelligence-engine";
+import { getRetirementGapAnalysis } from "@/lib/retirement/retirement-engine";
 import type { FinancialProfile } from "@/lib/profile/profile.types";
 import {
   calculateCFOMetrics,

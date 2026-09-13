@@ -415,7 +415,7 @@ export default function MonthlyFinancialStatementForm() {
     const year = form.year;
     const monthKey = `${year}-${String(month).padStart(2, "0")}`;
 
-    const previousStatement = loadMonthlyReview(monthKey);
+    const _previousStatement = loadMonthlyReview(monthKey);
     const now = new Date();
     const existingLedger = loadGoalLedger();
     const updatedLedger = [...existingLedger];

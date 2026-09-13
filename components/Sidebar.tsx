@@ -9,6 +9,7 @@ const navItems = [
   { href: "/household", label: "Household View", icon: "👨‍👩‍👧‍👦" },
   { href: "/monthly-entry", label: "Monthly Entry", icon: "📝" },
   { href: "/profile", label: "Financial Profile", icon: "👤" },
+  { href: "/after-54", label: "Life After 54", icon: "🌅" },
 
   // Wealth
   { href: "/portfolio", label: "Portfolio", icon: "💼" },

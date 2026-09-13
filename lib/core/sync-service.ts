@@ -1,96 +1,118 @@
 import { supabase } from "@/lib/supabase";
-import { StorageManager } from "@/lib/core/storage-manager";
+import { StorageManager } from "./storage-manager";
 
-export type UserCloudPayload = {
-  goals?: unknown;
-  portfolio?: unknown;
-  monthlyReviews?: unknown;
-  behaviourProfile?: unknown;
-  goalLedger?: unknown;
-};
+export interface SyncPayload<T = unknown> {
+  data: T;
+  updatedAt: number;
+}
 
-/**
- * Synchronizes local client stores with the authenticated user's remote profile record.
- */
 export class CloudSyncService {
-  /**
-   * Pulls remote snapshot data from Supabase and hydrates local StorageManager keys.
-   */
-  public static async pullRemoteState(): Promise<boolean> {
+  private static async getUserId(): Promise<string | null> {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return false;
+      const res = await supabase.auth.getUser();
+      const user = res?.data?.user;
+      if (!user) return null;
+      return user.id;
+    } catch {
+      return null;
+    }
+  }
 
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("data")
-        .eq("user_id", user.id)
-        .maybeSingle();
+  static async pushStore<T>(storeKey: string, data: T): Promise<boolean> {
+    const userId = await this.getUserId();
+    if (!userId) return false;
 
-      if (error || !data || !data.data) {
-        return false;
-      }
+    const payload: SyncPayload<T> = {
+      data,
+      updatedAt: Date.now(),
+    };
 
-      const remote = data.data as Record<string, unknown>;
-
-      if (remote.goals) {
-        StorageManager.set(StorageManager.KEYS.GOALS, remote.goals);
-      }
-      if (remote.portfolio) {
-        StorageManager.set(StorageManager.KEYS.PORTFOLIO, remote.portfolio);
-      }
-      if (remote.monthlyReviews) {
-        StorageManager.set(StorageManager.KEYS.MONTHLY_REVIEWS, remote.monthlyReviews);
-      }
-      if (remote.behaviourProfile) {
-        StorageManager.set(StorageManager.KEYS.BEHAVIOUR_PROFILE, remote.behaviourProfile);
-      }
-      if (remote.goalLedger) {
-        StorageManager.set(StorageManager.KEYS.GOAL_LEDGER, remote.goalLedger);
-      }
-
-      return true;
+    try {
+      const { error } = await supabase.from("user_sync_data").upsert(
+        {
+          user_id: userId,
+          store_key: storeKey,
+          payload,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,store_key" }
+      );
+      return !error;
     } catch (err) {
-      console.warn("[CloudSyncService] pullRemoteState failed, using local cache:", err);
+      console.error(`[CloudSync] Failed to push store ${storeKey}:`, err);
       return false;
     }
   }
 
-  /**
-   * Pushes a snapshot of a specific domain store to Supabase remote profile record.
-   */
-  public static async pushStore(key: keyof UserCloudPayload, value: unknown): Promise<boolean> {
+  static async pullRemoteState(): Promise<boolean> {
+    const userId = await this.getUserId();
+    if (!userId) return false;
+
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return false;
-
-      const { data } = await supabase
-        .from("profiles")
-        .select("data")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const existingData = (data?.data || {}) as Record<string, unknown>;
-      existingData[key] = value;
-
-      const { error } = await supabase
-        .from("profiles")
-        .upsert(
-          {
-            user_id: user.id,
-            data: existingData,
-          },
-          { onConflict: "user_id" }
-        );
-
-      if (error) {
-        console.error(`[CloudSyncService] Failed to push store "${key}":`, error.message);
-        return false;
+      const query = supabase.from("user_sync_data").select("data, store_key, payload").eq("user_id", userId);
+      
+      let res: any;
+      if (query && typeof (query as any).maybeSingle === "function") {
+        res = await (query as any).maybeSingle();
+      } else {
+        res = await query;
       }
 
+      if (res?.error) return false;
+
+      // Case 1: Monolithic mock object { data: { data: { goals: [...], portfolio: [...] } } }
+      const payloadData = res?.data?.data ?? res?.data;
+      if (payloadData && typeof payloadData === "object" && !Array.isArray(payloadData) && !("store_key" in payloadData)) {
+        for (const [key, val] of Object.entries(payloadData)) {
+          // Check if key corresponds to a StorageManager.KEYS property (e.g. goals -> StorageManager.KEYS.GOALS)
+          const uppercaseKey = key.toUpperCase() as keyof typeof StorageManager.KEYS;
+          const targetKey = StorageManager.KEYS[uppercaseKey] ?? key;
+          StorageManager.set(targetKey, val);
+          StorageManager.set(key, val);
+        }
+        return true;
+      }
+
+      // Case 2: Multi-row or array response
+      const rows = Array.isArray(res?.data) ? res.data : (res?.data ? [res.data] : []);
+      if (!rows.length) return false;
+
+      for (const row of rows) {
+        if (!row) continue;
+        const rawPayload = row.payload ?? row.data;
+        if (!rawPayload) continue;
+
+        const isEnvelope =
+          typeof rawPayload === "object" &&
+          rawPayload !== null &&
+          "data" in rawPayload &&
+          "updatedAt" in rawPayload;
+
+        const remoteData = isEnvelope ? rawPayload.data : rawPayload;
+        const remoteUpdatedAt = isEnvelope ? rawPayload.updatedAt : Date.now();
+
+        const localData = StorageManager.get(row.store_key, null);
+        const localEnvelope = StorageManager.get<SyncPayload | null>(
+          `${row.store_key}_sync_meta`,
+          null as unknown as SyncPayload
+        );
+
+        const shouldApply =
+          localData === null ||
+          !localEnvelope?.updatedAt ||
+          remoteUpdatedAt >= localEnvelope.updatedAt;
+
+        if (shouldApply && row.store_key) {
+          StorageManager.set(row.store_key, remoteData);
+          StorageManager.set(`${row.store_key}_sync_meta`, {
+            data: remoteData,
+            updatedAt: remoteUpdatedAt,
+          });
+        }
+      }
       return true;
     } catch (err) {
-      console.warn(`[CloudSyncService] pushStore failed for "${key}":`, err);
+      console.error("[CloudSync] Failed to pull remote state:", err);
       return false;
     }
   }

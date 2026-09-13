@@ -1,7 +1,7 @@
 import type { FinancialProfile } from "@/lib/profile/profile.types";
 import { calculateFinancialRules } from "@/lib/intelligence/financial-rules";
 import type { FinancialRulesResult } from "@/lib/intelligence/financial-rules";
-import type { RetirementGapAnalysis } from "@/lib/retirement/gap-intelligence-engine";
+import type { RetirementGapAnalysis } from "@/lib/retirement/retirement-engine";
 
 export type PortfolioItemSummary = {
   type: "Asset" | "Liability";

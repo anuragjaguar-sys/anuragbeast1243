@@ -1,5 +1,5 @@
 import { getPortfolio } from "@/lib/investments";
-import { getRetirementGapAnalysis } from "@/lib/retirement/gap-intelligence-engine";
+import { getRetirementGapAnalysis } from "@/lib/retirement/retirement-engine";
 import {
   getBehaviourProfile,
   getRecoverySummary,

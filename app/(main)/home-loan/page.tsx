@@ -22,7 +22,7 @@ export default function HomeLoanPage() {
   const [interestRate, setInterestRate] = useState<number>(8.5);
   const [tenureYears, setTenureYears] = useState<number>(20);
   const [prepayment, setPrepayment] = useState<number>(defaultPrepayment);
-  const [equityRate, setEquityRate] = useState<number>(12);
+  const [equityRate, _setEquityRate] = useState<number>(12);
 
   const tenureMonths = tenureYears * 12;
 

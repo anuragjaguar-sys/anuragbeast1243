@@ -48,7 +48,14 @@ export default function HouseholdPage() {
 
   useEffect(() => {
     if (profile?.partner) {
-      setPartnerName(profile.partner.name || "");
+      const p = profile.partner;
+      const t = setTimeout(() => {
+        setPartnerName(p.name || "");
+        setPartnerSalary(p.monthlySalary || 0);
+        setPartnerSip(p.monthlyInvestment || 0);
+        setPartnerMf(p.mutualFunds || 0);
+      }, 0);
+      return () => clearTimeout(t);
       setPartnerSalary(profile.partner.monthlySalary || 0);
       setPartnerSip(profile.partner.monthlyInvestment || 0); // NEW: Track partner SIP
       setPartnerMf(profile.partner.mutualFunds || 0);

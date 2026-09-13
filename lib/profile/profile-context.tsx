@@ -1,5 +1,7 @@
 "use client";
 
+import { CloudSyncService } from "@/lib/core/sync-service";
+
 import React, {
   createContext,
   useContext,
@@ -63,7 +65,13 @@ export function ProfileProvider({
   };
 
   useEffect(() => {
-    void fetchProfile();
+    const t = setTimeout(() => {
+      void (async () => {
+        await CloudSyncService.pullRemoteState();
+        await fetchProfile();
+      })();
+    }, 0);
+    return () => clearTimeout(t);
   }, []);
 
   return (

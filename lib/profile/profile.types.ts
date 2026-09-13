@@ -9,6 +9,8 @@ export interface IncomeProfile {
   monthlyInvestment: number; // Amount invested every month
   annualIncrement: number;   // Annual salary growth (stored as decimal, e.g. 0.05 = 5%)
   monthlyPension: number;    // Expected monthly pension after retirement
+  monthlyLoanPrepayment?: number;
+  monthlyEmergencySavings?: number;
 }
 
 export interface AssetProfile {

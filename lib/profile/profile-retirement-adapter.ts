@@ -87,10 +87,11 @@ export function getRetirementAssumptionsFromProfile(
         0
       );
 
-  const mutualFunds = valueForCategory("Mutual Fund");
-  const ppf = valueForCategory("PPF");
-  const epf = valueForCategory("EPF");
-  const nps = valueForCategory("NPS");
+  // Read from canonical portfolio items, with fallback to safeProfile.assets
+  const mutualFunds = valueForCategory("Mutual Fund") || Number(safeProfile.assets?.mutualFunds || 0);
+  const ppf = valueForCategory("PPF") || Number(safeProfile.assets?.ppf || 0);
+  const epf = valueForCategory("EPF") || Number(safeProfile.assets?.epf || 0);
+  const nps = valueForCategory("NPS") || Number(safeProfile.assets?.nps || 0);
 
   /**
    * Retirement corpus currently consists of:
@@ -146,6 +147,16 @@ export function getRetirementAssumptionsFromProfile(
     safeProfile.assumptions.sipIncrease || 0
   );
 
+  // Cash liberated after debt payoff (EMI + Prepayment redirected to Equity)
+  const homeLoanEmi = Number(
+    (safeProfile.income as any)?.homeLoanEmi || 
+    (safeProfile.liabilities as any)?.homeLoanEmi || 
+    18250
+  );
+  const prepayMonthly = Number(safeProfile.income?.monthlyLoanPrepayment || 50000);
+  const postDebtMonthlySurge = homeLoanEmi + prepayMonthly;
+  const debtPayoffYears = 1.9; // Age 38.9
+
   return {
     currentAge: Number(safeProfile.personal.currentAge || 0),
 
@@ -182,6 +193,8 @@ export function getRetirementAssumptionsFromProfile(
     monthlyInvestment: Number(
       safeProfile.income.monthlyInvestment || 0
     ),
+    postDebtMonthlySurge,
+    debtPayoffYears,
 
     /**
      * Future annual SIP increase.

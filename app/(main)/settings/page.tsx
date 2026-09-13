@@ -40,14 +40,14 @@ export default function SettingsPage() {
       setProfile(getBehaviourProfile());
       setSaveMessage("Settings saved successfully!");
       setTimeout(() => setSaveMessage(""), 3000);
-    } catch (error) {
+    } catch (_error) {
       setSaveMessage("Failed to save settings. Please try again.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const formatDateForInput = (dateString: string) => {
+  const _formatDateForInput = (dateString: string) => {
     return dateString; // Already in YYYY-MM-DD format
   };
 

@@ -19,18 +19,6 @@ export default function HabitTracker() {
   const [completionPercentage, setCompletionPercentage] = useState(0);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  useEffect(() => {
-    loadData();
-
-    // Listen for behaviour profile updates
-    const handleUpdate = () => {
-      loadData();
-    };
-
-    window.addEventListener('behaviourProfileUpdated', handleUpdate);
-    return () => window.removeEventListener('behaviourProfileUpdated', handleUpdate);
-  }, []);
-
   const loadData = () => {
     const currentMonthKey = getCurrentMonthKey();
     const currentHabits = getMonthlyHabitEntry(currentMonthKey);
@@ -38,6 +26,18 @@ export default function HabitTracker() {
     setMonthlyScore(getMonthlyDisciplineScore(currentHabits));
     setCompletionPercentage(getHabitCompletionPercentage(currentHabits));
   };
+
+  useEffect(() => {
+    void Promise.resolve().then(() => loadData());
+
+    // Listen for behaviour profile updates
+    const handleUpdate = () => {
+      void Promise.resolve().then(() => loadData());
+    };
+
+    window.addEventListener('behaviourProfileUpdated', handleUpdate);
+    return () => window.removeEventListener('behaviourProfileUpdated', handleUpdate);
+  }, []);
 
   const handleToggle = async (habitKey: keyof MonthlyHabitEntry) => {
     if (!habits || isUpdating) return;
@@ -62,7 +62,7 @@ export default function HabitTracker() {
         tradingHistory: [],
       });
       
-      loadData();
+      void Promise.resolve().then(() => loadData());
     } catch (error) {
       console.error("Failed to update habit:", error);
     } finally {

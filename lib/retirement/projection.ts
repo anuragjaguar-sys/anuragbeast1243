@@ -1,3 +1,19 @@
+
+function _createPrng(seed: number = 42) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function _sampleBoxMuller(): number {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
 import type { RetirementAssumptions, RetirementProjection, YearProjection } from "./types";
 import { calculateAnnualRetirementIncome, calculateFutureMonthlyIncome, calculateRequiredCorpus } from "./calculations";
 
@@ -16,7 +32,7 @@ function normaliseRate(value: number, maximumRate: number): number {
   return Math.min(Math.max(0, decimalRate), maximumRate);
 }
 
-function isRateCapped(value: number, maximumRate: number): boolean {
+function _isRateAboveMaximum(value: number, maximumRate: number): boolean {
   const safe = safeNumber(value);
   const decimalRate = safe >= 1 ? safe / 100 : safe;
   return decimalRate > maximumRate;
@@ -140,8 +156,14 @@ export function generateRetirementProjection(assumptions: RetirementAssumptions)
     epf = futureValue(epf, debtReturn, 1);
     nps = futureValue(nps, equityReturn, 1);
 
-    const monthlyInvestment = calculateYearlyMonthlyInvestment(assumptions.monthlyInvestment, annualSipIncrease, year);
-    const annualInvestment = futureValueOfMonthlyInvestment(monthlyInvestment, equityReturn);
+    const payoffYr = assumptions.debtPayoffYears ? Math.ceil(assumptions.debtPayoffYears) : 2;
+    const surgeYearsActive = Math.max(0, year - payoffYr);
+    const surge = (assumptions.postDebtMonthlySurge && year >= payoffYr)
+      ? assumptions.postDebtMonthlySurge * Math.pow(1 + annualSipIncrease, surgeYearsActive)
+      : 0;
+    const baseMonthly = calculateYearlyMonthlyInvestment(assumptions.monthlyInvestment, annualSipIncrease, year);
+    const totalMonthly = baseMonthly + surge;
+    const annualInvestment = futureValueOfMonthlyInvestment(totalMonthly, equityReturn);
     mutualFunds += annualInvestment;
     corpus = mutualFunds + ppf + epf + nps;
 
@@ -183,8 +205,14 @@ export function generateRetirementProjection(assumptions: RetirementAssumptions)
       p_ppf = stochasticFutureValue(p_ppf, rDebt);
       p_epf = stochasticFutureValue(p_epf, rDebt);
 
-      const monthlyInv = calculateYearlyMonthlyInvestment(assumptions.monthlyInvestment, annualSipIncrease, y);
-      const annualInv = stochasticFutureValueOfMonthlyInvestment(monthlyInv, rEq);
+      const payoffYr = assumptions.debtPayoffYears ? Math.ceil(assumptions.debtPayoffYears) : 2;
+      const surgeYearsActive = Math.max(0, y - payoffYr);
+      const surge = (assumptions.postDebtMonthlySurge && y >= payoffYr)
+        ? assumptions.postDebtMonthlySurge * Math.pow(1 + annualSipIncrease, surgeYearsActive)
+        : 0;
+      const baseMonthly = calculateYearlyMonthlyInvestment(assumptions.monthlyInvestment, annualSipIncrease, y);
+      const totalMonthly = baseMonthly + surge;
+      const annualInv = stochasticFutureValueOfMonthlyInvestment(totalMonthly, rEq);
       
       p_mf += annualInv;
       pathsByYear[y].push(p_mf + p_ppf + p_epf + p_nps);
@@ -208,7 +236,7 @@ export function generateRetirementProjection(assumptions: RetirementAssumptions)
   // -----------------------------------------------------
   const probabilityOfSuccess = Math.round((successfulPaths / ITERATIONS) * 100);
   const projectedCorpus = Math.round(corpus);
-  const finalGap = Math.max(requiredCorpus - projectedCorpus, 0);
+  const _finalGap = Math.max(requiredCorpus - projectedCorpus, 0);
   const surplus = projectedCorpus - requiredCorpus;
   const fireReadiness = requiredCorpus > 0 ? Math.min((projectedCorpus / requiredCorpus) * 100, 100) : 100;
   

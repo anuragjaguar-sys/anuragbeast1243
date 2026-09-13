@@ -16,6 +16,8 @@ export interface RetirementAssumptions {
   // Income
   monthlySalary: number;
   monthlyInvestment: number;
+  postDebtMonthlySurge?: number;
+  debtPayoffYears?: number;
   annualSipIncrease: number;
   expectedAnnualIncrement: number;
 

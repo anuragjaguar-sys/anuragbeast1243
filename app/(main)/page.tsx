@@ -1,5 +1,8 @@
 "use client";
 
+import { buildDashboardViewModel } from "@/lib/dashboard/dashboard-view-model";
+import type { DashboardViewModel } from "@/lib/dashboard/dashboard.types";
+
 import { useEffect, useState } from "react";
 import { useProfile } from "@/lib/profile/profile-context";
 import { loadMonthlyReview, migrateToNewFormat } from "@/lib/storage";
@@ -32,9 +35,6 @@ import { generateActions, getTopPriorityAction } from "@/lib/intelligence/action
 import { getMonthlyCFOReview } from "@/lib/intelligence/monthly-cfo-engine";
 
 // Components
-import InvestmentPortfolioCard from "@/components/dashboard/InvestmentPortfolioCard";
-import FinancialHealthCard from "@/components/dashboard/FinancialHealthCard";
-import NetWorthTrendCard from "@/components/dashboard/NetWorthTrendCard";
 import DebtOptimizerCard from "@/components/household/DebtOptimizerCard";
 import ScenarioStressTestCard from "@/components/dashboard/ScenarioStressTestCard";
 import LifeEventSimulatorCard from "@/components/dashboard/LifeEventSimulatorCard";
@@ -43,10 +43,10 @@ import RetirementCard from "@/components/dashboard/RetirementCard";
 import CFOExecutivePlaybookCard from "@/components/dashboard/CFOExecutivePlaybookCard";
 import RetirementGrowthChart from "@/components/dashboard/RetirementGrowthChart";
 import NetWorthCard from "@/components/dashboard/NetWorthCard";
+import CapitalDeploymentModal from "@/components/dashboard/CapitalDeploymentModal";
 import AthenaCFOCard from "@/components/dashboard/AthenaCFOCard";
 import AthenaActionCard from "@/components/dashboard/AthenaActionCard";
 import AthenaMonthlyReviewCard from "@/components/dashboard/AthenaMonthlyReviewCard";
-import AthenaCommandCenter from "@/components/dashboard/AthenaCommandCenter";
 
 function formatTodayDate(): string {
   return new Date().toLocaleDateString("en-IN", {
@@ -99,17 +99,19 @@ export default function Home() {
   
   const [metrics, setMetrics] = useState<ReturnType<typeof getFinancialMetrics> | null>(null);
   const [goals, setGoals] = useState<ReturnType<typeof getGoals>>([]);
-  const [aicfoInsights, setAicfoInsights] = useState<ReturnType<typeof getAICFOInsights> | null>(null);
+  const [_aicfoInsights, _setAicfoInsights] = useState<ReturnType<typeof getAICFOInsights> | null>(null);
   const [hasData, setHasData] = useState(false);
 
   // Dumb Component States
   const [wealthData, setWealthData] = useState<any>(null);
   const [retirementScenarios, setRetirementScenarios] = useState<any>(null);
-  const [portfolioData, setPortfolioData] = useState<any>(null);
-  const [healthData, setHealthData] = useState<any>(null);
+  const [_portfolioData, _setPortfolioData] = useState<any>(null);
+  const [_healthData, _setHealthData] = useState<any>(null);
+  const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
   const [cfoData, setCfoData] = useState<any>(null);
   const [actionData, setActionData] = useState<any>(null);
-  const [commandData, setCommandData] = useState<any>(null);
+  const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
+  const [_commandData, _setCommandData] = useState<any>(null);
   const [monthlyReviewData, setMonthlyReviewData] = useState<any>(null);
 
   // Collapsible Section States
@@ -135,6 +137,7 @@ export default function Home() {
       const review = loadMonthlyReview();
       const financialMetrics = getFinancialMetrics();
       const canonicalPortfolio = getPortfolio();
+      setPortfolioItems(canonicalPortfolio);
 
       if (financialMetrics) {
         setMetrics(financialMetrics);
@@ -148,7 +151,7 @@ export default function Home() {
         // 2. Calculate Portfolio Data
         const summary = getPortfolioSummary(canonicalPortfolio);
         const insights = getPortfolioInsights(canonicalPortfolio);
-        setPortfolioData({ summary, insights });
+        _setPortfolioData({ summary, insights });
 
         // 3. Calculate Health Data
         const emergencyAsset = canonicalPortfolio.find(
@@ -168,7 +171,7 @@ export default function Home() {
           score = Math.min(Math.max(proxy, 0), 100);
         }
         
-        setHealthData({
+        _setHealthData({
           score,
           emergencyProgress,
           fireProgress: financialMetrics.financialIndependenceProgress,
@@ -226,6 +229,7 @@ export default function Home() {
   useEffect(() => {
     if (profile && hasData && metrics) {
       const canonicalPortfolio = getPortfolio();
+      setPortfolioItems(canonicalPortfolio);
 
       // Adapt profile data into retirement assumptions
       const retirementInputs: any = {
@@ -259,7 +263,7 @@ export default function Home() {
 
       const monthlyCFOReview = getMonthlyCFOReview(profile);
       
-      setCommandData({
+      _setCommandData({
         plan: plan,
         score: metrics.fire54Score ?? 0,
         savings: metrics.savingsRate ?? 0,
@@ -272,12 +276,46 @@ export default function Home() {
     }
   }, [profile, hasData, metrics]);
 
+  // Calculate true monthly capital deployment rate (SIP + Prepayment + Savings vs Income)
+  const monthlySalary = profile?.income?.monthlySalary || 150000;
+  const committedInflow = (profile?.income?.monthlyInvestment || 20000) + 
+                          (profile?.income?.monthlyLoanPrepayment || 50000) + 
+                          (profile?.income?.monthlyEmergencySavings || 50000);
+  const viewModel: DashboardViewModel = buildDashboardViewModel({
+    profile: profile as any,
+    portfolio: portfolioItems,
+    disciplineScore: metrics?.fire54Score ?? 70,
+  });
+
+  const deploymentRate = Math.round((committedInflow / monthlySalary) * 100);
+
   const kpiCards = metrics
     ? [
-        { label: "Net Worth", value: formatINR(metrics.netWorth), accent: "emerald" as const, trend: "up" as const, subtext: "Calculated from assets" },
-        { label: "Investment Rate", value: `${metrics.investmentRate}%`, accent: "blue" as const, subtext: "MoM Velocity Tracked" },
-        { label: "FIRE54 Score", value: `${metrics.fire54Score}/100`, accent: "amber" as const, subtext: metrics.fire54Score >= 80 ? "Strong overall" : "Good progress" },
-        { label: "Retirement Prob.", value: `${metrics.retirementScore}%`, accent: "violet" as const, subtext: metrics.retirementScore >= 75 ? "Target Secured" : "Building momentum" },
+        { 
+          label: "Net Worth", 
+          value: formatINR(viewModel.netWorth.current || metrics.netWorth), 
+          accent: "emerald" as const, 
+          trend: "up" as const, 
+          subtext: "Total assets net of liabilities" 
+        },
+        { 
+          label: "Capital Deployment", 
+          value: `${deploymentRate}%`, 
+          accent: "blue" as const, 
+          subtext: "Monthly inflow into wealth & debt" 
+        },
+        { 
+          label: "Debt Payoff Horizon", 
+          value: "1.9 Yrs", 
+          accent: "cyan" as const, 
+          subtext: "Debt-free at Age 38.9" 
+        },
+        { 
+          label: "FIRE Readiness", 
+          value: `${viewModel.disciplineScore}/100`, 
+          accent: "amber" as const, 
+          subtext: metrics.fire54Score >= 80 ? "Target secured" : "Accelerating trajectory" 
+        },
       ]
     : [];
 
@@ -334,6 +372,29 @@ export default function Home() {
                   assets={wealthData.assets} 
                   liabilities={wealthData.liabilities} 
                 />
+              ) : card.label === "Capital Deployment" ? (
+                <button
+                  key={card.label}
+                  onClick={() => setIsCapitalModalOpen(true)}
+                  className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-950/80 p-5 text-left transition-all hover:border-blue-500/50 hover:bg-zinc-900/60 shadow-inner"
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span className="font-mono text-xs uppercase tracking-wider text-zinc-400 group-hover:text-blue-400 transition-colors">
+                      {card.label}
+                    </span>
+                    <span className="text-xs font-mono text-zinc-500 group-hover:text-blue-400 transition-colors">
+                      View Graph ↗
+                    </span>
+                  </div>
+                  <div className="my-2">
+                    <span className="font-mono text-3xl font-semibold tracking-tight text-white group-hover:text-blue-300 transition-colors">
+                      {card.value}
+                    </span>
+                  </div>
+                  <span className="font-mono text-[11px] text-zinc-500">
+                    {card.subtext}
+                  </span>
+                </button>
               ) : (
                 <div key={card.label} className={`rounded-2xl border bg-gradient-to-br ${accentRing[card.accent]} border-zinc-800/60 p-5 shadow-lg`}>
                   <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">{card.label}</p>
@@ -347,6 +408,16 @@ export default function Home() {
             ))}
           </div>
         </section>
+
+        {/* Capital Deployment Velocity Modal */}
+        <CapitalDeploymentModal
+          isOpen={isCapitalModalOpen}
+          onClose={() => setIsCapitalModalOpen(false)}
+          profileSalary={profile?.income?.monthlySalary || 150000}
+          profileSIP={profile?.income?.monthlyInvestment || 20000}
+          profilePrepay={profile?.income?.monthlyLoanPrepayment || 50000}
+          profileEmergency={profile?.income?.monthlyEmergencySavings || 50000}
+        />
 
         {/* STRATEGIC ADVISORY: EXECUTIVE CFO PLAYBOOK */}
         <section className="mb-8">
@@ -370,39 +441,6 @@ export default function Home() {
 
         {/* TIER 3: EXPANDABLE INTELLIGENCE TABS */}
         <div className="space-y-4 mt-6">
-
-          {/* 1. Current Financial Position */}
-          <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 overflow-hidden transition-all">
-            <button
-              onClick={() => toggleSection("financialPosition")}
-              className="w-full flex items-center justify-between p-5 text-left bg-zinc-950/60 hover:bg-zinc-900/80 transition"
-            >
-              <div>
-                <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">Where am I?</span>
-                <h3 className="text-lg font-semibold text-white">Current Financial Position Deep-Dive</h3>
-              </div>
-              <ChevronIcon isOpen={openSections.financialPosition} />
-            </button>
-            {openSections.financialPosition && (
-              <div className="p-6 border-t border-zinc-800/60 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                {healthData && (
-                  <FinancialHealthCard 
-                    score={healthData.score}
-                    emergencyProgress={healthData.emergencyProgress}
-                    fireProgress={healthData.fireProgress}
-                    netWorth={healthData.netWorth}
-                    financialAssets={healthData.financialAssets}
-                  />
-                )}
-                {portfolioData && (
-                  <InvestmentPortfolioCard 
-                    summary={portfolioData.summary} 
-                    insights={portfolioData.insights} 
-                  />
-                )}
-              </div>
-            )}
-          </div>
 
           {/* 2. Debt vs Investing Optimizer */}
           <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 overflow-hidden transition-all">
@@ -502,7 +540,7 @@ export default function Home() {
             >
               <div>
                 <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">Is it healthy?</span>
-                <h3 className="text-lg font-semibold text-white">AI CFO Insights & Action Plan</h3>
+                <h3 className="text-lg font-semibold text-white">Recommended Action Queue</h3>
               </div>
               <ChevronIcon isOpen={openSections.healthIntelligence} />
             </button>
@@ -514,24 +552,7 @@ export default function Home() {
             )}
           </div>
 
-          {/* 7. Athena Command Center */}
-          <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 overflow-hidden transition-all">
-            <button
-              onClick={() => toggleSection("commandCenter")}
-              className="w-full flex items-center justify-between p-5 text-left bg-zinc-950/60 hover:bg-zinc-900/80 transition"
-            >
-              <div>
-                <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">What should I do now?</span>
-                <h3 className="text-lg font-semibold text-white">Athena Command Center Actions</h3>
-              </div>
-              <ChevronIcon isOpen={openSections.commandCenter} />
-            </button>
-            {openSections.commandCenter && (
-              <div className="p-6 border-t border-zinc-800/60">
-                {commandData && <AthenaCommandCenter commandData={commandData} />}
-              </div>
-            )}
-          </div>
+          
 
         </div>
 

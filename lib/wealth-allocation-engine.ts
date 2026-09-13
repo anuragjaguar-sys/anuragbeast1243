@@ -159,9 +159,12 @@ export function getDefaultAllocationTargets(): WealthAllocationTargets {
 // HELPER FUNCTIONS
 // =========================================
 
-function safeParseAmount(value: string): number {
-  if (!value || !value.trim()) return 0;
-  return parseAmount(value);
+function safeParseAmount(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return isNaN(value) ? 0 : value;
+  const str = String(value).trim();
+  if (!str) return 0;
+  return parseAmount(str);
 }
 
 // =========================================
