@@ -1,3 +1,4 @@
+import { getRetirementAssumptionsFromProfile } from "@/lib/profile/profile-retirement-adapter";
 "use client";
 
 import { useState } from "react";
@@ -25,7 +26,7 @@ export default function RetirementCard() {
     );
   }
 
-  const projection = getRetirementProjection(profile);
+  const projection = getRetirementProjection(getRetirementAssumptionsFromProfile(profile));
   const baseProjectedCorpus = projection.projectedCorpus ?? 0;
   const requiredCorpus = projection.requiredCorpus ?? 0;
   const yearsLeft = projection.yearsLeft ?? 1;

@@ -7,7 +7,6 @@
 // 1. Core types and assumptions
 export type * from "./types";
 export { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
-export type { RetirementAssumptions } from "./assumptions";
 
 // 2. Calculations & Primitives
 export * from "./calculations";
@@ -26,28 +25,51 @@ export * from "./portfolio-asset-adapter";
 
 import { generateRetirementProjection } from "./projection";
 import { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
+import type { RetirementAssumptions, RetirementProjection } from "./types";
 
 /**
  * Standard accessor for deterministic & Monte Carlo retirement projections.
  */
-export const getRetirementProjection = (inputs: any, overrides?: any) => {
-  const merged = overrides ? { ...(inputs || {}), ...overrides } : inputs;
-  return generateRetirementProjection(merged);
+export const getRetirementProjection = (
+  inputs?: any,
+  overrides?: Partial<RetirementAssumptions>
+): RetirementProjection => {
+  // If a full financial profile is passed directly, fall back or merge
+  let base = inputs || {};
+  if (base.personal && base.assumptions) {
+    // Looks like FinancialProfile; extract essentials if not adapted
+    base = {
+      ...DEFAULT_RETIREMENT_ASSUMPTIONS,
+      currentAge: Number(base.personal?.currentAge || 32),
+      retirementAge: Number(base.personal?.retirementAge || 54),
+      desiredMonthlyIncome: Number(base.goals?.desiredMonthlyRetirementIncome || 100000),
+      monthlyInvestment: Number(base.income?.monthlyInvestment || 0),
+      annualSipIncrease: Number(base.assumptions?.sipIncrease || 0.10),
+      equityReturn: Number(base.assumptions?.equityReturn || 0.12),
+      debtReturn: Number(base.assumptions?.debtReturn || 0.07),
+      inflationRate: Number(base.assumptions?.inflationRate || 0.06),
+      withdrawalRate: Number(base.assumptions?.withdrawalRate || 0.04),
+    };
+  }
+  const merged = overrides ? { ...base, ...overrides } : base;
+  return generateRetirementProjection(merged as any);
 };
 
 /**
  * Generates triple-scenario sensitivity projections (Conservative, Base, Aggressive).
  */
-export function generateRetirementScenarios(inputs: any) {
-  const baseAssumptions = {
+export function generateRetirementScenarios(
+  inputs?: Partial<RetirementAssumptions>
+): { conservative: RetirementProjection; base: RetirementProjection; aggressive: RetirementProjection } {
+  const baseAssumptions: RetirementAssumptions = {
     ...DEFAULT_RETIREMENT_ASSUMPTIONS,
     ...(inputs || {}),
   };
 
   const conservative = generateRetirementProjection({
     ...baseAssumptions,
-    preRetirementReturn: Math.max(0.01, (baseAssumptions.preRetirementReturn || 0.12) - 0.02),
-    postRetirementReturn: Math.max(0.01, (baseAssumptions.postRetirementReturn || 0.07) - 0.02),
+    equityReturn: Math.max(0.01, (baseAssumptions.equityReturn || 0.12) - 0.02),
+    debtReturn: Math.max(0.01, (baseAssumptions.debtReturn || 0.07) - 0.02),
     inflationRate: (baseAssumptions.inflationRate || 0.06) + 0.01,
   });
 
@@ -55,8 +77,8 @@ export function generateRetirementScenarios(inputs: any) {
 
   const aggressive = generateRetirementProjection({
     ...baseAssumptions,
-    preRetirementReturn: (baseAssumptions.preRetirementReturn || 0.12) + 0.02,
-    postRetirementReturn: (baseAssumptions.postRetirementReturn || 0.07) + 0.01,
+    equityReturn: (baseAssumptions.equityReturn || 0.12) + 0.02,
+    debtReturn: (baseAssumptions.debtReturn || 0.07) + 0.01,
     inflationRate: Math.max(0.01, (baseAssumptions.inflationRate || 0.06) - 0.01),
   });
 
