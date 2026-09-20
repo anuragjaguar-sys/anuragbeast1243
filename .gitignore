@@ -68,3 +68,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Build artifacts & caches
+*.tsbuildinfo
+
+# Archives & temp bundles
+*.tar
+*.tar.gz
+*.zip
+*-files.txt

@@ -11,7 +11,7 @@ export async function middleware(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // If Supabase is not configured locally, allow passage in development
+  // Development bypass if credentials are missing
   if (!supabaseUrl || !supabaseAnonKey) {
     return response;
   }
@@ -35,19 +35,24 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const isLoginPage = request.nextUrl.pathname.startsWith("/login");
+  const pathname = request.nextUrl.pathname;
+  const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/auth");
+  const isPublicApi = pathname.startsWith("/api/public");
 
-  // Redirect unauthenticated requests away from the dashboard
-  if (!user && !isLoginPage) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/login";
-    return NextResponse.redirect(redirectUrl);
+  // Allow auth pages and public APIs to proceed unauthenticated
+  if (isAuthPage || isPublicApi) {
+    if (user && (pathname.startsWith("/login") || pathname.startsWith("/signup"))) {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/";
+      return NextResponse.redirect(redirectUrl);
+    }
+    return response;
   }
 
-  // Redirect authenticated requests away from login to home
-  if (user && isLoginPage) {
+  // Redirect unauthenticated visitors to login
+  if (!user) {
     const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/";
+    redirectUrl.pathname = "/login";
     return NextResponse.redirect(redirectUrl);
   }
 
