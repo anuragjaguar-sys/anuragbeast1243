@@ -1,45 +1,41 @@
-import PlaceholderPage from "@/components/PlaceholderPage";
+"use client";
+
+import { useProfile } from "@/lib/profile/profile-context";
+import { getCFOInsight } from "@/lib/intelligence/cfo-engine";
+import AthenaCFOCard from "@/components/dashboard/AthenaCFOCard";
+import CFOExecutivePlaybookCard from "@/components/dashboard/CFOExecutivePlaybookCard";
 
 export default function AiCfoPage() {
+  const { profile, loading } = useProfile();
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <p className="text-sm text-zinc-400">Loading AI CFO Intelligence...</p>
+      </div>
+    );
+  }
+
+  const cfoInsight = getCFOInsight(profile);
+
   return (
-    <PlaceholderPage
-      icon="🤖"
-      title="AI CFO"
-      subtitle="Intelligent Advisory"
-      description="Your personal AI-powered Chief Financial Officer. Get tailored insights, risk assessments, and actionable recommendations based on your complete financial picture."
-      accent="emerald"
-      features={[
-        {
-          icon: "🩺",
-          title: "Health Assessment",
-          description: "Comprehensive financial health score with strengths, risks, and improvement areas.",
-        },
-        {
-          icon: "💡",
-          title: "Smart Recommendations",
-          description: "Personalized advice on investments, prepayments, and savings optimization.",
-        },
-        {
-          icon: "⚠️",
-          title: "Risk Analysis",
-          description: "Identify concentration risks, liquidity gaps, and behavioral finance pitfalls.",
-        },
-        {
-          icon: "🗣️",
-          title: "Conversational Q&A",
-          description: "Ask natural language questions about your finances and get contextual answers.",
-        },
-        {
-          icon: "📅",
-          title: "Monthly Briefings",
-          description: "Automated monthly summaries highlighting key changes and action items.",
-        },
-        {
-          icon: "🎯",
-          title: "Scenario Planning",
-          description: "What-if analysis for major financial decisions like prepayments or job changes.",
-        },
-      ]}
-    />
+    <div className="space-y-6 pb-12">
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">🤖</span>
+          <h1 className="text-2xl font-bold tracking-tight text-white">AI CFO Advisory</h1>
+        </div>
+        <p className="mt-1 text-sm text-zinc-400">
+          Deterministic financial intelligence, capital allocation strategy, and recovery guardrails.
+        </p>
+      </div>
+
+      {/* Primary CFO Insight Card */}
+      <AthenaCFOCard insight={cfoInsight} />
+
+      {/* Strategic Playbook Execution */}
+      <CFOExecutivePlaybookCard />
+    </div>
   );
 }
