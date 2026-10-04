@@ -28,16 +28,15 @@ export default function NetWorthCard({ metrics, assets, liabilities }: NetWorthC
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-xl font-bold text-white">💰 Net Worth</h2>
         <span
-          className={`rounded-full px-3 py-1 text-sm font-medium
-            ${
-              metrics.status === "Excellent"
-                ? "bg-green-500/20 text-green-400"
-                : metrics.status === "Good"
-                ? "bg-blue-500/20 text-blue-400"
-                : metrics.status === "Average"
-                ? "bg-yellow-500/20 text-yellow-400"
-                : "bg-red-500/20 text-red-400"
-            }`}
+          className={`rounded-full px-3 py-1 text-sm font-medium ${
+            metrics.status === "Excellent"
+              ? "bg-green-500/20 text-green-400"
+              : metrics.status === "Good"
+              ? "bg-blue-500/20 text-blue-400"
+              : metrics.status === "Average"
+              ? "bg-yellow-500/20 text-yellow-400"
+              : "bg-red-500/20 text-red-400"
+          }`}
         >
           {metrics.status}
         </span>
@@ -46,19 +45,19 @@ export default function NetWorthCard({ metrics, assets, liabilities }: NetWorthC
       <div className="space-y-3 text-slate-300">
         <div className="flex justify-between">
           <span>Total Assets</span>
-          <span>{formatCurrency(metrics.totalAssets)}</span>
+          <span className="font-semibold text-emerald-400">{formatCurrency(metrics.totalAssets)}</span>
         </div>
 
         <div className="flex justify-between">
           <span>Total Liabilities</span>
-          <span>{formatCurrency(metrics.totalLiabilities)}</span>
+          <span className="font-semibold text-rose-400">{formatCurrency(metrics.totalLiabilities)}</span>
         </div>
 
         <hr className="border-slate-700" />
 
         <div className="flex justify-between text-lg font-bold text-white">
           <span>Net Worth</span>
-          <span>{formatCurrency(metrics.netWorth)}</span>
+          <span className="text-white font-bold">{formatCurrency(metrics.netWorth)}</span>
         </div>
 
         <div className="pt-4">
@@ -90,6 +89,7 @@ export default function NetWorthCard({ metrics, assets, liabilities }: NetWorthC
               total={metrics.totalAssets}
               formatCurrency={formatCurrency}
               emptyMessage="No assets have been added to Portfolio yet."
+              colorClass="text-emerald-400"
             />
             <BreakdownSection
               title="Liabilities"
@@ -97,6 +97,7 @@ export default function NetWorthCard({ metrics, assets, liabilities }: NetWorthC
               total={metrics.totalLiabilities}
               formatCurrency={formatCurrency}
               emptyMessage="No liabilities have been added to Portfolio."
+              colorClass="text-rose-400"
             />
             <div className="flex justify-between border-t border-slate-700 pt-3 font-semibold text-white">
               <span>Assets − Liabilities</span>
@@ -109,7 +110,7 @@ export default function NetWorthCard({ metrics, assets, liabilities }: NetWorthC
   );
 }
 
-function BreakdownSection({ title, items, total, formatCurrency, emptyMessage }: any) {
+function BreakdownSection({ title, items, total, formatCurrency, emptyMessage, colorClass }: any) {
   return (
     <section>
       <div className="mb-2 flex justify-between text-sm font-semibold text-white">
@@ -120,12 +121,15 @@ function BreakdownSection({ title, items, total, formatCurrency, emptyMessage }:
         <p className="text-sm text-slate-400">{emptyMessage}</p>
       ) : (
         <ul className="space-y-2 text-sm text-slate-300">
-          {items.map((item: any) => (
-            <li key={item.id} className="flex justify-between gap-4">
-              <span>{item.name}</span>
-              <span className="shrink-0">{formatCurrency(item.value)}</span>
-            </li>
-          ))}
+          {items.map((item: any) => {
+            const val = Number(item.currentValue ?? item.outstandingAmount ?? item.value ?? 0);
+            return (
+              <li key={item.id} className="flex justify-between gap-4">
+                <span className="truncate">{item.name}</span>
+                <span className={`shrink-0 font-medium ${colorClass}`}>{formatCurrency(val)}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>
