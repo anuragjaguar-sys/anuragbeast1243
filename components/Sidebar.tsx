@@ -6,23 +6,16 @@ import { usePathname } from "next/navigation";
 import { CloudSyncService } from "@/lib/core/sync-service";
 
 const navItems = [
-  // Core
   { href: "/", label: "Dashboard", icon: "🏠" },
   { href: "/household", label: "Household View", icon: "👨‍👩‍👧‍👦" },
   { href: "/financial-statement", label: "Financial Statement", icon: "📝" },
   { href: "/profile", label: "Financial Profile", icon: "👤" },
   { href: "/after-54", label: "Life After 54", icon: "🌅" },
-
-  // Wealth
   { href: "/portfolio", label: "Portfolio", icon: "💼" },
   { href: "/goals", label: "Goals", icon: "🎯" },
   { href: "/wealth-allocation", label: "Wealth Allocation", icon: "💳" },
-
-  // Intelligence
   { href: "/reports", label: "Reports", icon: "📊" },
   { href: "/ai-cfo", label: "AI CFO", icon: "🤖" },
-
-  // Settings
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
@@ -36,24 +29,28 @@ export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "offline">("synced");
 
-  const triggerSync = async () => {
+  const triggerSync = async (forceReload = false) => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setSyncStatus("offline");
       return;
     }
     setSyncStatus("syncing");
     try {
+      await CloudSyncService.pushAllLocal();
       await CloudSyncService.pullRemoteState();
       setSyncStatus("synced");
+      if (forceReload) {
+        window.location.reload();
+      }
     } catch {
       setSyncStatus("synced");
     }
   };
 
   useEffect(() => {
-    triggerSync();
+    triggerSync(false);
 
-    const handleFocus = () => triggerSync();
+    const handleFocus = () => triggerSync(false);
     const handleOnline = () => setSyncStatus("synced");
     const handleOffline = () => setSyncStatus("offline");
 
@@ -86,11 +83,10 @@ export default function Sidebar() {
         </Link>
 
         <div className="flex items-center gap-3">
-          {/* Mobile Sync Indicator */}
           <button
-            onClick={triggerSync}
-            title="Tap to sync with cloud"
-            className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs text-zinc-300"
+            onClick={() => triggerSync(true)}
+            title="Tap to sync with cloud and reload"
+            className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs text-zinc-300 transition active:scale-95"
           >
             {syncStatus === "syncing" ? (
               <>
@@ -110,7 +106,6 @@ export default function Sidebar() {
             )}
           </button>
 
-          {/* Hamburger toggle */}
           <button
             onClick={() => setIsOpen(!isOpen)}
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-white"
@@ -129,13 +124,12 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Sidebar (Desktop Fixed + Mobile Slide Drawer) */}
+      {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-zinc-800/60 bg-zinc-950/95 backdrop-blur-xl transition-transform duration-300 ease-in-out md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
-        {/* Logo */}
         <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-6">
           <Link href="/" className="group flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/20 transition-transform group-hover:scale-105">
@@ -159,7 +153,6 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="space-y-1">
             {navItems.map((item) => {
@@ -188,12 +181,11 @@ export default function Sidebar() {
           </ul>
         </nav>
 
-        {/* Desktop Footer with Sync Status */}
         <div className="border-t border-zinc-800/60 px-5 py-4">
           <button
-            onClick={triggerSync}
-            title="Click to sync with cloud"
-            className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2.5 text-left transition hover:border-zinc-700"
+            onClick={() => triggerSync(true)}
+            title="Click to sync and refresh data"
+            className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2.5 text-left transition hover:border-zinc-700 active:scale-98"
           >
             <p className="font-mono text-[10px] tracking-wider text-zinc-500 uppercase">
               Cloud Sync
