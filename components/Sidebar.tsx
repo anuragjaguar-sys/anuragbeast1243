@@ -27,6 +27,7 @@ function isActive(pathname: string, href: string): boolean {
 export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "offline">("synced");
 
   const triggerSync = async (forceReload = false) => {
@@ -37,23 +38,23 @@ export default function Sidebar() {
     setSyncStatus("syncing");
 
     try {
-      // 6-second timeout protection so mobile never hangs
-      const syncPromise = (async () => {
+      const syncTask = (async () => {
+        const email = await CloudSyncService.getUserEmail();
+        setUserEmail(email);
         await CloudSyncService.pushAllLocal();
         await CloudSyncService.pullRemoteState();
       })();
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Sync timeout")), 6000)
+      const timeoutTask = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout")), 6000)
       );
 
-      await Promise.race([syncPromise, timeoutPromise]);
+      await Promise.race([syncTask, timeoutTask]);
       setSyncStatus("synced");
       if (forceReload) {
         window.location.reload();
       }
     } catch {
-      // Fallback gracefully on timeout or network stutter
       setSyncStatus("synced");
       if (forceReload) {
         window.location.reload();
@@ -62,20 +63,20 @@ export default function Sidebar() {
   };
 
   useEffect(() => {
+    void CloudSyncService.getUserEmail().then(setUserEmail);
     triggerSync(false);
 
     const handleFocus = () => triggerSync(false);
-    const handleOnline = () => setSyncStatus("synced");
-    const handleOffline = () => setSyncStatus("offline");
+    const handleRemoteUpdate = () => {
+      setSyncStatus("synced");
+    };
 
     window.addEventListener("focus", handleFocus);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
+    window.addEventListener("fire54_remote_data_updated", handleRemoteUpdate);
 
     return () => {
       window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      window.removeEventListener("fire54_remote_data_updated", handleRemoteUpdate);
     };
   }, []);
 
@@ -85,6 +86,7 @@ export default function Sidebar() {
 
   return (
     <>
+      {/* Mobile Top Header */}
       <div className="fixed top-0 left-0 right-0 z-40 flex h-16 items-center justify-between border-b border-zinc-800/80 bg-zinc-950/90 px-4 backdrop-blur-md md:hidden">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md shadow-emerald-500/20">
@@ -105,11 +107,6 @@ export default function Sidebar() {
               <>
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
                 <span className="text-[11px] text-amber-400">Syncing...</span>
-              </>
-            ) : syncStatus === "offline" ? (
-              <>
-                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
-                <span className="text-[11px] text-zinc-400">Offline</span>
               </>
             ) : (
               <>
@@ -136,6 +133,7 @@ export default function Sidebar() {
         />
       )}
 
+      {/* Sidebar */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-zinc-800/60 bg-zinc-950/95 backdrop-blur-xl transition-transform duration-300 ease-in-out md:translate-x-0 ${
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
@@ -192,26 +190,25 @@ export default function Sidebar() {
           </ul>
         </nav>
 
-        <div className="border-t border-zinc-800/60 px-5 py-4">
+        {/* Footer with Sync Status & User Account */}
+        <div className="border-t border-zinc-800/60 px-5 py-4 space-y-2">
+          {userEmail && (
+            <p className="truncate font-mono text-[10px] text-zinc-400">
+              👤 {userEmail}
+            </p>
+          )}
+
           <button
             onClick={() => triggerSync(true)}
             title="Click to sync and refresh data"
-            className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2.5 text-left transition hover:border-zinc-700 active:scale-98"
+            className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2 text-left transition hover:border-zinc-700 active:scale-98"
           >
-            <p className="font-mono text-[10px] tracking-wider text-zinc-500 uppercase">
-              Cloud Sync
-            </p>
-            <div className="mt-1 flex items-center justify-between">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {syncStatus === "syncing" ? (
                   <>
                     <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
                     <span className="text-xs font-medium text-amber-400">Syncing...</span>
-                  </>
-                ) : syncStatus === "offline" ? (
-                  <>
-                    <span className="h-2 w-2 rounded-full bg-zinc-500" />
-                    <span className="text-xs font-medium text-zinc-400">Offline</span>
                   </>
                 ) : (
                   <>
@@ -219,11 +216,11 @@ export default function Sidebar() {
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
-                    <span className="text-xs font-medium text-emerald-400">Connected</span>
+                    <span className="text-xs font-medium text-emerald-400">Live Sync Active</span>
                   </>
                 )}
               </div>
-              <span className="text-[10px] text-zinc-500">Tap to refresh</span>
+              <span className="text-[10px] text-zinc-500">Refresh</span>
             </div>
           </button>
         </div>

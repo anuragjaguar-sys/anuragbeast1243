@@ -19,9 +19,22 @@ export default function PortfolioPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<PortfolioItem | null>(null);
 
+  // Load on mount and re-render live whenever another device makes an update
   useEffect(() => {
-    const loaded = getPortfolio();
-    setPortfolio(loaded);
+    const loadItems = () => {
+      const loaded = getPortfolio();
+      setPortfolio(loaded);
+    };
+
+    loadItems();
+
+    window.addEventListener("fire54_remote_data_updated", loadItems);
+    window.addEventListener("storage", loadItems);
+
+    return () => {
+      window.removeEventListener("fire54_remote_data_updated", loadItems);
+      window.removeEventListener("storage", loadItems);
+    };
   }, []);
 
   const handleSave = (item: Asset | Liability) => {
@@ -56,7 +69,6 @@ export default function PortfolioPage() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-8 p-8">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Link
@@ -82,10 +94,8 @@ export default function PortfolioPage() {
         </button>
       </div>
 
-      {/* Summary */}
       <PortfolioSummary portfolio={portfolio} />
 
-      {/* Form */}
       {showForm && (
         <PortfolioForm
           item={editingItem}
@@ -97,7 +107,6 @@ export default function PortfolioPage() {
         />
       )}
 
-      {/* Assets */}
       <PortfolioTable
         title="Assets"
         type="Asset"
@@ -106,7 +115,6 @@ export default function PortfolioPage() {
         onEdit={handleEdit}
       />
 
-      {/* Liabilities */}
       <PortfolioTable
         title="Liabilities"
         type="Liability"

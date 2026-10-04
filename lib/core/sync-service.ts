@@ -16,12 +16,19 @@ const STORE_KEY_MAP: Record<string, string> = {
 };
 
 export class CloudSyncService {
-  private static async getUserId(): Promise<string | null> {
+  public static async getUserEmail(): Promise<string | null> {
     try {
       const res = await supabase.auth.getUser();
-      const user = res?.data?.user;
-      if (!user) return null;
-      return user.id;
+      return res?.data?.user?.email ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  public static async getUserId(): Promise<string | null> {
+    try {
+      const res = await supabase.auth.getUser();
+      return res?.data?.user?.id ?? null;
     } catch {
       return null;
     }
@@ -46,14 +53,17 @@ export class CloudSyncService {
         },
         { onConflict: "user_id,store_key" }
       );
-      return !error;
+      if (error) {
+        console.error(`[CloudSync] Upsert error on ${storeKey}:`, error.message);
+        return false;
+      }
+      return true;
     } catch (err) {
       console.error(`[CloudSync] Failed to push store ${storeKey}:`, err);
       return false;
     }
   }
 
-  // Pushes all local storage tables to Supabase cloud
   static async pushAllLocal(): Promise<boolean> {
     const userId = await this.getUserId();
     if (!userId) return false;
@@ -91,7 +101,6 @@ export class CloudSyncService {
     }
   }
 
-  // Pulls all rows and writes to both canonical and shorthand keys
   static async pullRemoteState(): Promise<boolean> {
     const userId = await this.getUserId();
     if (!userId) return false;
@@ -103,7 +112,7 @@ export class CloudSyncService {
         .eq("user_id", userId);
 
       if (error || !rows) {
-        console.error("[CloudSync] Error fetching user_sync_data:", error);
+        console.error("[CloudSync] Error fetching user_sync_data:", error?.message);
         return false;
       }
 
@@ -123,7 +132,6 @@ export class CloudSyncService {
 
         const canonicalKey = STORE_KEY_MAP[row.store_key] || row.store_key;
 
-        // Save to both keys so every component finds it immediately
         StorageManager.set(canonicalKey, remoteData);
         StorageManager.set(row.store_key, remoteData);
         StorageManager.set(`${row.store_key}_sync_meta`, {
@@ -132,7 +140,6 @@ export class CloudSyncService {
         });
       }
 
-      // Also pull profile from profiles table directly
       try {
         const { data: profileRow } = await supabase
           .from("profiles")
@@ -147,10 +154,38 @@ export class CloudSyncService {
         console.warn("[CloudSync] Profile pull warning:", pErr);
       }
 
+      // Notify all open pages to re-render immediately
+      window.dispatchEvent(new Event("fire54_remote_data_updated"));
       return true;
     } catch (err) {
       console.error("[CloudSync] Failed to pull remote state:", err);
       return false;
+    }
+  }
+
+  // Live real-time listener: triggers whenever a write happens on Supabase
+  static subscribeToRealtime(): () => void {
+    try {
+      const channel = supabase
+        .channel("fire54_realtime_sync")
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "user_sync_data",
+          },
+          () => {
+            void this.pullRemoteState();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch {
+      return () => {};
     }
   }
 }
