@@ -61,7 +61,7 @@ function buildExpenseCategories(statement: MonthlyFinancialStatement): ExpenseCa
     {
       id: "living",
       category: "Living Expenses",
-      amount: parseAmount(household.groceries) + parseAmount(household.electricity) + parseAmount(household.gas) + parseAmount(household.internet) + parseAmount(household.maintenance) + parseAmount(household.houseHelp) + parseAmount(household.fuel),
+      amount: parseAmount(household.groceries) + parseAmount(household.messBill ?? "") + parseAmount(household.electricity) + parseAmount(household.gas) + parseAmount(household.internet) + parseAmount(household.maintenance) + parseAmount(household.houseHelp) + parseAmount(household.fuel),
       color: EXPENSE_COLORS.living,
     },
     {

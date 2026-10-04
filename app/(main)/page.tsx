@@ -5,7 +5,7 @@ import type { DashboardViewModel } from "@/lib/dashboard/dashboard.types";
 
 import { useEffect, useState } from "react";
 import { useProfile } from "@/lib/profile/profile-context";
-import { loadMonthlyReview, migrateToNewFormat } from "@/lib/storage";
+import { getAllMonthlyReviews, loadMonthlyReview, migrateToNewFormat } from "@/lib/storage";
 import {
   formatINR,
   getFinancialMetrics,
@@ -179,42 +179,44 @@ export default function Home() {
           financialAssets: financialMetrics.financialAssets,
         });
 
-        // 4. Monthly MoM Review Math
-        try {
-          const rawStorage = localStorage.getItem("fire54_monthly_reviews") || localStorage.getItem("fire54-monthly-reviews");
-          let currentReview = review || { month: "August 2026", income: { salary: 250000 }, cashAllocation: { investments: 60000 } };
-          let previousReview = { month: "July 2026", income: { salary: 250000 }, cashAllocation: { investments: 50000 } };
+        // 4. Monthly comparison uses only real saved statements.
+        const monthlyReviews = getAllMonthlyReviews();
+        const currentReview = monthlyReviews[0]?.data;
+        const previousReview = monthlyReviews[1]?.data;
 
-          if (rawStorage) {
-            const parsed = JSON.parse(rawStorage);
-            if (Array.isArray(parsed) && parsed.length >= 2) {
-              currentReview = parsed[parsed.length - 1];
-              previousReview = parsed[parsed.length - 2];
-            } else if (Array.isArray(parsed) && parsed.length === 1) {
-              currentReview = parsed[0];
-            }
+        if (!currentReview || !previousReview) {
+          setMonthlyReviewData(null);
+        } else {
+          const toAmount = (value: unknown): number => {
+            const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+            return Number.isFinite(parsed) ? parsed : 0;
+          };
+
+          const currSalary = toAmount(currentReview.income.salaryInHand);
+          const currInvested = toAmount(currentReview.cashAllocation.investments);
+          const prevSalary = toAmount(previousReview.income.salaryInHand);
+          const prevInvested = toAmount(previousReview.cashAllocation.investments);
+
+          if (currSalary <= 0 || prevSalary <= 0) {
+            setMonthlyReviewData(null);
+          } else {
+            const currentInvRate = Number(((currInvested / currSalary) * 100).toFixed(1));
+            const prevInvRate = Number(((prevInvested / prevSalary) * 100).toFixed(1));
+            const rateDelta = Number((currentInvRate - prevInvRate).toFixed(1));
+
+            setMonthlyReviewData({
+              currentMonth: monthlyReviews[0].monthLabel,
+              currentInvRate,
+              currentInvested: currInvested,
+              prevMonth: monthlyReviews[1].monthLabel,
+              prevInvRate,
+              prevInvested,
+              rateDelta,
+              isPositiveDelta: rateDelta >= 0,
+            });
           }
+        }
 
-          const currSalary = Number((currentReview as any)?.income?.salaryInHand || (currentReview as any)?.income?.salary || (currentReview as any)?.income || 250000);
-          const currInvested = Number((currentReview as any)?.cashAllocation?.investments || (currentReview as any)?.investments || 60000);
-          const currentInvRate = currSalary > 0 ? Number(((currInvested / currSalary) * 100).toFixed(1)) : 0;
-
-          const prevSalary = Number((previousReview as any)?.income?.salaryInHand || (previousReview as any)?.income?.salary || (previousReview as any)?.income || 250000);
-          const prevInvested = Number((previousReview as any)?.cashAllocation?.investments || (previousReview as any)?.investments || 50000);
-          const prevInvRate = prevSalary > 0 ? Number(((prevInvested / prevSalary) * 100).toFixed(1)) : 0;
-          const calculatedRateDelta = Number((currentInvRate - prevInvRate).toFixed(1));
-          
-          setMonthlyReviewData({
-            currentMonth: currentReview?.month || "Current",
-            currentInvRate,
-            currentInvested: currInvested,
-            prevMonth: previousReview?.month || "Prior",
-            prevInvRate,
-            prevInvested: prevInvested,
-            rateDelta: calculatedRateDelta,
-          });
-        } catch {}
-        
         setGoals(getGoals());
         setHasData(true);
       } else {
@@ -276,18 +278,22 @@ export default function Home() {
     }
   }, [profile, hasData, metrics]);
 
-  // Calculate true monthly capital deployment rate (SIP + Prepayment + Savings vs Income)
-  const monthlySalary = profile?.income?.monthlySalary || 150000;
-  const committedInflow = (profile?.income?.monthlyInvestment || 20000) + 
-                          (profile?.income?.monthlyLoanPrepayment || 50000) + 
-                          (profile?.income?.monthlyEmergencySavings || 50000);
+  // Calculate capital deployment from entered profile data only.
+  const monthlySalary = profile?.income?.monthlySalary ?? 0;
+  const committedInflow =
+    (profile?.income?.monthlyInvestment ?? 0) +
+    (profile?.income?.monthlyLoanPrepayment ?? 0) +
+    (profile?.income?.monthlyEmergencySavings ?? 0);
   const viewModel: DashboardViewModel = buildDashboardViewModel({
     profile: profile as any,
     portfolio: portfolioItems,
     disciplineScore: metrics?.fire54Score ?? 70,
   });
 
-  const deploymentRate = Math.round((committedInflow / monthlySalary) * 100);
+  const deploymentRate =
+    monthlySalary > 0
+      ? Math.round((committedInflow / monthlySalary) * 100)
+      : null;
 
   const kpiCards = metrics
     ? [
@@ -300,15 +306,18 @@ export default function Home() {
         },
         { 
           label: "Capital Deployment", 
-          value: `${deploymentRate}%`, 
-          accent: "blue" as const, 
-          subtext: "Monthly inflow into wealth & debt" 
+          value: deploymentRate === null ? "—" : `${deploymentRate}%`,
+          accent: "blue" as const,
+          subtext:
+            deploymentRate === null
+              ? "Add monthly income to calculate"
+              : "Monthly inflow into wealth & debt" 
         },
         { 
           label: "Debt Payoff Horizon", 
-          value: "1.9 Yrs", 
-          accent: "cyan" as const, 
-          subtext: "Debt-free at Age 38.9" 
+          value: "—",
+          accent: "cyan" as const,
+          subtext: "Add loan details to calculate" 
         },
         { 
           label: "FIRE Readiness", 
@@ -413,10 +422,10 @@ export default function Home() {
         <CapitalDeploymentModal
           isOpen={isCapitalModalOpen}
           onClose={() => setIsCapitalModalOpen(false)}
-          profileSalary={profile?.income?.monthlySalary || 150000}
-          profileSIP={profile?.income?.monthlyInvestment || 20000}
-          profilePrepay={profile?.income?.monthlyLoanPrepayment || 50000}
-          profileEmergency={profile?.income?.monthlyEmergencySavings || 50000}
+          profileSalary={monthlySalary}
+          profileSIP={profile?.income?.monthlyInvestment ?? 0}
+          profilePrepay={profile?.income?.monthlyLoanPrepayment ?? 0}
+          profileEmergency={profile?.income?.monthlyEmergencySavings ?? 0}
         />
 
         {/* STRATEGIC ADVISORY: EXECUTIVE CFO PLAYBOOK */}

@@ -1,21 +1,28 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Supabase now calls this a "publishable key". Keep supporting the older
+// anon-key variable so existing local and deployed environments keep working.
+const supabaseKey =
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseKey) {
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "Missing Supabase credentials! NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY must be configured."
+      "Missing Supabase credentials! Configure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or NEXT_PUBLIC_SUPABASE_ANON_KEY)."
     );
   } else {
     console.warn(
-      "[Supabase] Warning: Running without NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. Remote sync operations will fail."
+      "[Supabase] Warning: Running without a Supabase URL or publishable/anon key. Remote sync operations will fail."
     );
   }
 }
 
-export const supabase = createClient(
+// The proxy reads the session from cookies. createBrowserClient keeps the
+// browser session in those same cookies, so a successful password login is
+// visible on the following navigation instead of redirecting back to /login.
+export const supabase = createBrowserClient(
   supabaseUrl || "https://unconfigured.supabase.co",
-  supabaseAnonKey || "unconfigured-anon-key"
+  supabaseKey || "unconfigured-publishable-key"
 );

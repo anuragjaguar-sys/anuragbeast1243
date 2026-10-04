@@ -25,11 +25,16 @@ export default function LoginPage() {
         setMessage("Check your email to confirm your account, then log in.");
       }
     } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) {
         setMessage(error.message);
+      } else if (!data.session) {
+        setMessage("Sign-in completed but no session was returned. Please try again.");
       } else {
-        router.push("/");
+        // The Supabase SSR browser client writes the session cookie before
+        // navigation, allowing proxy.ts to see the authenticated user.
+        router.replace("/");
+        router.refresh();
       }
     }
 

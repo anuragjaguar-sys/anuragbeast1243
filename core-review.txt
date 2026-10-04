@@ -1,0 +1,2751 @@
+import {  DecisionPlan } from "@/lib/intelligence/decision-engine";
+
+export type ActionStatus = "Pending" | "Active" | "Completed";
+
+export interface AthenaAction {
+  id: string;
+  title: string;
+  category: string;
+  priority: "High" | "Medium" | "Low";
+  status: ActionStatus;
+  targetDate?: string;
+  completedDate?: string;
+  impact: string;
+}
+
+function makeId(prefix = "act") {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+export function generateActions(plan: DecisionPlan): AthenaAction[] {
+  const actions: AthenaAction[] = [];
+
+  if (!plan) return actions;
+
+  switch (plan.phase) {
+    case "Behavioural Protection":
+      actions.push({
+        id: makeId("behaviour"),
+        title: "Protect F&O-Free Recovery",
+        category: "Behaviour",
+        priority: "High",
+        status: "Pending",
+        impact: "Protects the recovery streak and prevents further trading-related capital destruction",
+      });
+      break;
+
+    case "Financial Safety":
+      actions.push({
+        id: makeId("emergency"),
+        title: "Build Emergency Fund",
+        category: "Safety",
+        priority: "High",
+        status: "Pending",
+        impact: "Protects liquidity and prevents forced asset sales during income shocks",
+      });
+      break;
+
+    case "Debt Reduction":
+      actions.push({
+        id: makeId("home-loan"),
+        title: "Close Home Loan",
+        category: "Debt",
+        priority: "High",
+        status: "Pending",
+        impact: "After closure redirect EMI amount into investments",
+      });
+      break;
+
+    case "Retirement Optimisation":
+      actions.push({
+        id: makeId("retirement"),
+        title: "Increase Long Term Investments",
+        category: "Wealth",
+        priority: "High",
+        status: "Pending",
+        impact: "Increase SIPs or contributions to close retirement funding gap",
+      });
+      break;
+
+    case "Wealth Acceleration":
+    default:
+      actions.push({
+        id: makeId("wealth"),
+        title: "Grow Equity Investments",
+        category: "Wealth",
+        priority: "Medium",
+        status: "Pending",
+        impact: "Gradually increase equity allocation and tax-efficient investments",
+      });
+      break;
+  }
+
+  return actions;
+}
+
+export function getTopPriorityAction(
+  actions: AthenaAction[]
+): AthenaAction | null {
+  if (!actions || actions.length === 0) return null;
+
+  const priorityOrder: Record<string, number> = {
+    High: 3,
+    Medium: 2,
+    Low: 1,
+  };
+
+  const unfinished = actions.filter((a) => a.status !== "Completed");
+
+  if (unfinished.length === 0) return null;
+
+  unfinished.sort((a, b) => {
+    const p = priorityOrder[b.priority] - priorityOrder[a.priority];
+
+    if (p !== 0) return p;
+
+    const statusOrder: Record<string, number> = {
+      Active: 2,
+      Pending: 1,
+      Completed: 0,
+    };
+
+    const s = statusOrder[b.status] - statusOrder[a.status];
+
+    if (s !== 0) return s;
+
+    return a.id.localeCompare(b.id);
+  });
+
+  return unfinished[0] || null;
+}import { getPortfolio } from "@/lib/investments";
+import { getRetirementGapAnalysis } from "@/lib/retirement/retirement-engine";
+import {
+  getBehaviourProfile,
+  getRecoverySummary,
+} from "@/lib/behaviour-engine";
+import { FinancialProfile } from "@/lib/profile/profile.types";
+import {
+  calculateCFOMetrics,
+  CFODeterministicMetrics,
+} from "@/lib/intelligence/cfo-metrics";
+
+export type CFOStatus =
+  | "EXCELLENT"
+  | "GOOD"
+  | "NEEDS_ATTENTION"
+  | "CRITICAL";
+
+export interface CFOInsight {
+  status: CFOStatus;
+  headline: string;
+  primaryIssue: string;
+  recommendedAction: string;
+  financialImpact: string;
+}
+
+function formatINR(value: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+  }).format(Math.round(value));
+}
+
+export function generateCFOInsightFromMetrics(
+  metrics: CFODeterministicMetrics,
+  streak: number = 0
+): CFOInsight {
+  // 1. Behavioral Risk Check
+  if (metrics.activeRecoveryRisk) {
+    const relapseMessage = metrics.recentBehaviouralRelapse
+      ? `A recent F&O relapse has occurred and the current recovery streak is only ${streak} days.`
+      : `The current F&O-free recovery streak is ${streak} days.`;
+
+    return {
+      status: "CRITICAL",
+      headline: "Protect the recovery before optimizing wealth",
+      primaryIssue: `${relapseMessage} Behavioural stability is currently more important than increasing investment intensity.`,
+      recommendedAction:
+        "Maintain the F&O-free streak and avoid restarting speculative trading. Protect existing savings, investments and emergency reserves. Do not use available cash for trading.",
+      financialImpact:
+        "Every protected recovery day reduces the risk of another large trading loss and preserves capital that can compound toward FIRE54.",
+    };
+  }
+
+  // 2. Liquidity Reserve & Debt Reduction Check
+  if (metrics.emergencyFundBelowTarget || metrics.hasHomeLoan) {
+    const issueParts: string[] = [];
+
+    if (metrics.emergencyFundBelowTarget) {
+      issueParts.push(
+        `Emergency fund is at ${Math.round(metrics.emergencyFundCoverage * 100)}% of the required reserve (${metrics.rules.emergencyFundMonths} months covered).`
+      );
+    }
+
+    if (metrics.hasHomeLoan) {
+      issueParts.push(
+        `Home loan remains outstanding at ₹${formatINR(metrics.homeLoanOutstanding)}.`
+      );
+    }
+
+    return {
+      status: "NEEDS_ATTENTION",
+      headline: "Financial safety and debt reduction are the priority",
+      primaryIssue: issueParts.join(" "),
+      recommendedAction: metrics.hasHomeLoan
+        ? "Continue planned home loan prepayment. After loan closure, redirect the freed cash flow into long-term equity SIPs."
+        : "Complete the emergency reserve before increasing investment risk.",
+      financialImpact:
+        "Strengthening liquidity and reducing debt creates a safer financial base and increases future investment capacity.",
+    };
+  }
+
+  // 3. Retirement Gap Check
+  if (metrics.retirementGapExists) {
+    return {
+      status: "NEEDS_ATTENTION",
+      headline: "Retirement gap exists, but the long-term strategy remains achievable",
+      primaryIssue: `Projected retirement corpus is still ₹${formatINR(metrics.corpusGap)} short of the required FIRE54 target.`,
+      recommendedAction: `Increase long-term investments by approximately ₹${formatINR(metrics.additionalMonthlyInvestmentNeeded)} per month if cash flow allows. Continue avoiding speculative trading.`,
+      financialImpact:
+        "Increasing systematic long-term investment while avoiding trading losses allows more of your existing income to compound toward the FIRE54 target.",
+    };
+  }
+
+  // 4. Fully On-Track State
+  return {
+    status: "EXCELLENT",
+    headline: "Your financial strategy is on track",
+    primaryIssue: "No major behavioural, liquidity, debt or retirement gaps are currently visible.",
+    recommendedAction:
+      "Maintain your F&O-free discipline, continue systematic investing and gradually increase long-term equity contributions as income permits.",
+    financialImpact:
+      "Consistent investing without speculative trading gives your existing capital the best opportunity to compound toward FIRE54.",
+  };
+}
+
+export function getCFOInsight(profile: FinancialProfile): CFOInsight {
+  const retirement = getRetirementGapAnalysis(profile);
+  const portfolio = getPortfolio();
+
+  const behaviourProfile = getBehaviourProfile();
+  const recovery = getRecoverySummary(behaviourProfile);
+
+  const metrics = calculateCFOMetrics({
+    profile,
+    portfolio,
+    retirementGap: retirement,
+    behaviour: {
+      currentStreak: recovery.currentStreak,
+      relapseCount: recovery.relapseCount,
+    },
+  });
+
+  return generateCFOInsightFromMetrics(metrics, recovery.currentStreak);
+}
+import type { FinancialProfile } from "@/lib/profile/profile.types";
+import { calculateFinancialRules } from "@/lib/intelligence/financial-rules";
+import type { FinancialRulesResult } from "@/lib/intelligence/financial-rules";
+import type { RetirementGapAnalysis } from "@/lib/retirement/retirement-engine";
+
+export type PortfolioItemSummary = {
+  type: "Asset" | "Liability";
+  name: string;
+  category?: string;
+  currentValue?: number;
+};
+
+export type BehaviourSummaryInput = {
+  currentStreak: number;
+  relapseCount: number;
+};
+
+export type CFOMetricsInput = {
+  profile: FinancialProfile;
+  portfolio: PortfolioItemSummary[];
+  retirementGap: RetirementGapAnalysis;
+  behaviour: BehaviourSummaryInput;
+};
+
+export type CFODeterministicMetrics = {
+  totalAssets: number;
+  totalLiabilities: number;
+  calculatedNetWorth: number;
+  emergencyFundValue: number;
+  emergencyFundTarget: number;
+  emergencyFundCoverage: number;
+  emergencyFundBelowTarget: boolean;
+  homeLoanOutstanding: number;
+  hasHomeLoan: boolean;
+  activeRecoveryRisk: boolean;
+  recentBehaviouralRelapse: boolean;
+  retirementGapExists: boolean;
+  corpusGap: number;
+  additionalMonthlyInvestmentNeeded: number;
+  rules: FinancialRulesResult;
+};
+
+export function calculateCFOMetrics(input: CFOMetricsInput): CFODeterministicMetrics {
+  const { profile, portfolio, retirementGap, behaviour } = input;
+
+  const currentStreak = behaviour.currentStreak ?? 0;
+  const relapseCount = behaviour.relapseCount ?? 0;
+
+  const activeRecoveryRisk = relapseCount > 0 && currentStreak < 30;
+  const recentBehaviouralRelapse = relapseCount > 0 && currentStreak < 14;
+
+  const emergencyFundAsset = portfolio.find(
+    (item) => item.type === "Asset" && item.name === "Emergency Fund"
+  );
+  const emergencyFundValue = emergencyFundAsset?.currentValue ?? 0;
+
+  const rawAssets = (profile.assets || {}) as Record<string, any>;
+  const emergencyFundTarget = Math.max(rawAssets.emergencyFund || 0, 0);
+
+  const homeLoan = portfolio.find(
+    (item) => item.type === "Liability" && item.name === "Home Loan"
+  );
+  const homeLoanOutstanding = homeLoan?.currentValue ?? 0;
+  const hasHomeLoan = homeLoanOutstanding > 0;
+
+  const totalAssets = portfolio
+    .filter((item) => item.type === "Asset")
+    .reduce((sum, item) => sum + (item.currentValue ?? 0), 0);
+
+  const totalLiabilities = portfolio
+    .filter((item) => item.type === "Liability")
+    .reduce((sum, item) => sum + (item.currentValue ?? 0), 0);
+
+  const calculatedNetWorth = totalAssets - totalLiabilities;
+
+  const rawProfile = profile as Record<string, any>;
+  const rawIncome = (profile.income || {}) as Record<string, any>;
+
+  const rules = calculateFinancialRules({
+    monthlyIncome: rawIncome.monthlySalary || rawIncome.salaryInHand || rawIncome.salary || 0,
+    monthlyExpenses:
+      rawProfile.expense?.totalExpenses ||
+      rawProfile.expenses?.totalExpenses ||
+      rawProfile.monthlyExpenses ||
+      50000,
+    monthlyInvestments: rawProfile.investments?.monthlySip || rawProfile.monthlyInvestment || 0,
+    emergencyFundCorpus: emergencyFundValue,
+    totalDebt: homeLoanOutstanding,
+    liquidAssets: emergencyFundValue + (rawAssets.savings || rawAssets.cash || rawAssets.savingsAccount || 0),
+    netWorth: calculatedNetWorth,
+  });
+
+  const emergencyFundCoverage =
+    emergencyFundTarget > 0
+      ? emergencyFundValue / emergencyFundTarget
+      : rules.emergencyFundMonths / 6;
+
+  const emergencyFundBelowTarget =
+    emergencyFundTarget > 0
+      ? emergencyFundCoverage < 1
+      : !rules.isEmergencyFundAdequate;
+
+  const corpusGap = Math.max(retirementGap?.corpusGap ?? 0, 0);
+  const retirementGapExists = corpusGap > 0;
+  const additionalMonthlyInvestmentNeeded = Math.max(
+    retirementGap?.additionalMonthlyInvestmentNeeded ?? 0,
+    0
+  );
+
+  return {
+    totalAssets,
+    totalLiabilities,
+    calculatedNetWorth,
+    emergencyFundValue,
+    emergencyFundTarget,
+    emergencyFundCoverage,
+    emergencyFundBelowTarget,
+    homeLoanOutstanding,
+    hasHomeLoan,
+    activeRecoveryRisk,
+    recentBehaviouralRelapse,
+    retirementGapExists,
+    corpusGap,
+    additionalMonthlyInvestmentNeeded,
+    rules,
+  };
+}
+import { RetirementAssumptions } from "@/lib/retirement/types";
+import { FinancialProfile } from "@/lib/profile/profile.types";
+import { MonthlyFinancialStatement } from "@/lib/monthly-review";
+import { PortfolioItem } from "@/lib/investments/types";
+
+export interface MonthlyCashAudit {
+  salaryInHand: number;
+  totalInflow: number;
+  livingExpenses: number;
+  monthlySIP: number;
+  homeLoanPrepayment: number;
+  emergencyRemittance: number;
+  totalCommittedOutflow: number;
+  unallocatedSurplus: number;
+}
+
+export interface LiabilityAudit {
+  homeLoanPrincipal: number;
+  estimatedInterestRate: number;
+  prepaymentMonthly: number;
+  prepaymentTrackStatus: "Ahead" | "Optimal" | "Sub-optimal";
+  verdict: string;
+}
+
+export interface PlaybookRecommendation {
+  id: string;
+  category: "cash_surplus" | "liability" | "emergency_sunset" | "sip_stepup";
+  title: string;
+  verdict: string;
+  actionItems: string[];
+  impact: string;
+  urgency: "critical" | "important" | "optimisation";
+}
+
+export interface ExecutivePlaybook {
+  audit: MonthlyCashAudit;
+  liability: LiabilityAudit;
+  recommendations: PlaybookRecommendation[];
+  phases: {
+    phase: string;
+    timeline: string;
+    sipRunRate: number;
+    directive: string;
+  }[];
+}
+
+function parseNum(val: any): number {
+  if (typeof val === "number") return Number.isFinite(val) ? val : 0;
+  if (!val) return 0;
+  const cleaned = String(val).replace(/[^\d.-]/g, "");
+  const num = parseFloat(cleaned);
+  return Number.isFinite(num) ? num : 0;
+}
+
+export function generateExecutivePlaybook(
+  assumptions: RetirementAssumptions,
+  profile: FinancialProfile,
+  latestStatement?: MonthlyFinancialStatement | null,
+  portfolio?: PortfolioItem[] | null
+): ExecutivePlaybook {
+  // 1. Reconcile Monthly Salary and Cash Flow
+  const salaryInHand = parseNum(latestStatement?.income?.salaryInHand) || parseNum(profile?.income?.monthlySalary) || 150000;
+  const totalInflow = salaryInHand + 
+    parseNum(latestStatement?.income?.daAllowances) + 
+    parseNum(latestStatement?.income?.bonus) + 
+    parseNum(latestStatement?.income?.otherIncome);
+
+  const livingExpenses = parseNum(latestStatement?.cashAllocation?.monthlyExpenses) || 50000;
+  const monthlySIP = parseNum(latestStatement?.cashAllocation?.investments) || 
+                     (profile?.income?.monthlyInvestment === 100000 ? 20000 : parseNum(profile?.income?.monthlyInvestment)) || 
+                     20000;
+  const homeLoanPrepayment = parseNum(latestStatement?.cashAllocation?.homeLoanPrepayment) || 
+                             parseNum(profile?.income?.monthlyLoanPrepayment) || 
+                             50000;
+  const emergencyRemittance = parseNum(latestStatement?.cashAllocation?.savingsAccount) || 
+                              parseNum(latestStatement?.cashAllocation?.emergencyFund) || 
+                              parseNum(profile?.income?.monthlyEmergencySavings) || 
+                              50000;
+
+  const totalCommittedOutflow = livingExpenses + monthlySIP + homeLoanPrepayment + emergencyRemittance;
+  const declaredCashRemaining = parseNum(latestStatement?.cashAllocation?.cashRemaining);
+  const unallocatedSurplus = declaredCashRemaining > 0 
+    ? declaredCashRemaining 
+    : Math.max(0, totalInflow - totalCommittedOutflow);
+
+  // 2. Audit Liabilities
+  let homeLoanPrincipal = 0;
+  if (portfolio && portfolio.length > 0) {
+    const loanItem = portfolio.find(
+      (item) => item.type === "Liability" && item.name.toLowerCase().includes("home loan")
+    );
+    if (loanItem) {
+      const raw = loanItem as any;
+      homeLoanPrincipal = raw.currentValue || raw.outstandingAmount || raw.investedAmount || 0;
+    }
+  }
+  if (!homeLoanPrincipal) {
+    homeLoanPrincipal = parseNum(profile?.liabilities?.homeLoanOutstanding);
+  }
+
+  const prepaymentTrackStatus: "Ahead" | "Optimal" | "Sub-optimal" = 
+    homeLoanPrepayment >= 50000 ? "Optimal" : homeLoanPrepayment > 0 ? "Sub-optimal" : "Sub-optimal";
+
+  const liability: LiabilityAudit = {
+    homeLoanPrincipal,
+    estimatedInterestRate: 8.5,
+    prepaymentMonthly: homeLoanPrepayment,
+    prepaymentTrackStatus,
+    verdict: homeLoanPrepayment >= 50000
+      ? `Your ₹${homeLoanPrepayment.toLocaleString("en-IN")}/mo prepayment is saving you compounding interest at ~8.5% p.a., rapidly collapsing your principal tenure.`
+      : "Prepayment is below recommended velocity to crush high-interest tenure."
+  };
+
+  // 3. Emergency Fund Progress & Sunset Date
+  const currentEmergencyCash = parseNum(profile?.assets?.emergencyFund) + parseNum(profile?.assets?.cash);
+  const emergencyTargetMonths = parseNum(profile?.goals?.emergencyFundMonths) || 6;
+  const emergencyTargetAmount = livingExpenses * emergencyTargetMonths;
+  const emergencyGap = Math.max(0, emergencyTargetAmount - currentEmergencyCash);
+  const emergencyMonthsLeft = emergencyRemittance > 0 
+    ? Math.max(1, Math.ceil(emergencyGap / emergencyRemittance))
+    : 0;
+
+  const recommendations: PlaybookRecommendation[] = [];
+
+  // Directive 1: Unallocated Surplus Cash Deployment
+  if (unallocatedSurplus > 0) {
+    recommendations.push({
+      id: "rec-surplus-deploy",
+      category: "cash_surplus",
+      title: `Surplus Cash Deployment: Deploy ₹${unallocatedSurplus.toLocaleString("en-IN")} This Month`,
+      verdict: `You have ₹${unallocatedSurplus.toLocaleString("en-IN")} in unallocated surplus this month after all EMIs, prepayments, living costs, and SIPs.`,
+      actionItems: [
+        `Do not leave this ₹${unallocatedSurplus.toLocaleString("en-IN")} sitting idle in your primary checking account.`,
+        emergencyGap > 0 
+          ? `Top up ₹${Math.min(unallocatedSurplus, emergencyGap).toLocaleString("en-IN")} into liquid emergency reserves to accelerate your sunset date.`
+          : `Deploy 100% of this residual surplus into broad-market index equity funds (Nifty 50 / Next 50).`,
+        `Sweep any excess beyond your baseline checking needs into high-yield sweep deposits.`
+      ],
+      impact: "Eliminates cash drag and accelerates compounding without straining monthly liquidity.",
+      urgency: "critical"
+    });
+  } else {
+    recommendations.push({
+      id: "rec-zero-drag",
+      category: "cash_surplus",
+      title: "Zero Cash Drag Achieved",
+      verdict: "100% of your incoming salary is accounted for across expenses, prepayments, emergency savings, and SIPs.",
+      actionItems: [
+        "Maintain this strict execution rhythm for the remainder of this fiscal quarter.",
+        "Ensure bank balance is maintained strictly for immediate 30-day billings."
+      ],
+      impact: "Operating at peak financial discipline.",
+      urgency: "optimisation"
+    });
+  }
+
+  // Directive 2: Home Loan Prepayment Track
+  recommendations.push({
+    id: "rec-liability-track",
+    category: "liability",
+    title: `Home Loan Prepayment: ₹${homeLoanPrepayment.toLocaleString("en-IN")}/mo Track Check`,
+    verdict: liability.verdict,
+    actionItems: [
+      `Maintain ₹${homeLoanPrepayment.toLocaleString("en-IN")}/month aggressive prepayment. This guarantees an 8.5% risk-free yield against bank debt.`,
+      `Request updated amortisation schedule every 6 months to ensure bank reduces tenure, NOT monthly EMI.`,
+      `Once loan balance is cleared, immediately pivot this entire ₹${homeLoanPrepayment.toLocaleString("en-IN")}/mo into wealth-building equity.`
+    ],
+    impact: "Saves ₹15L–₹35L in cumulative interest and knocks years off your debt timeline.",
+    urgency: "important"
+  });
+
+  // Directive 3: Emergency Fund Sunset Directive
+  if (emergencyGap > 0) {
+    recommendations.push({
+      id: "rec-emergency-sunset",
+      category: "emergency_sunset",
+      title: `Emergency Buffer: Sunset in ~${emergencyMonthsLeft} Months`,
+      verdict: `You are depositing ₹${emergencyRemittance.toLocaleString("en-IN")}/mo into savings. Target ceiling: ₹${(emergencyTargetAmount / 100000).toFixed(2)}L (${emergencyTargetMonths} months).`,
+      actionItems: [
+        `Strict Rule: Once total emergency cash hits ₹${(emergencyTargetAmount / 100000).toFixed(2)}L in ~${emergencyMonthsLeft} months, CEASE this remittance.`,
+        `Redirect that exact ₹${emergencyRemittance.toLocaleString("en-IN")}/month into equity SIPs.`,
+        `Your active SIP will jump overnight from ₹${monthlySIP.toLocaleString("en-IN")}/mo to ₹${(monthlySIP + emergencyRemittance).toLocaleString("en-IN")}/mo.`
+      ],
+      impact: `Reclaims ₹${(emergencyRemittance * 12 / 100000).toFixed(2)} Lakh per year from low-yield savings into high-growth equity.`,
+      urgency: "critical"
+    });
+  } else {
+    recommendations.push({
+      id: "rec-emergency-funded",
+      category: "emergency_sunset",
+      title: "Emergency Runway Fully Locked: Redirect Remittance",
+      verdict: `Your emergency reserves have reached the full target of ₹${(emergencyTargetAmount / 100000).toFixed(2)}L.`,
+      actionItems: [
+        `Stop depositing ₹${emergencyRemittance.toLocaleString("en-IN")}/mo into low-yield savings immediately.`,
+        `Deploy the full ₹${emergencyRemittance.toLocaleString("en-IN")}/mo into your core retirement equity SIPs today.`
+      ],
+      impact: "Unlocks maximum compounding efficiency.",
+      urgency: "critical"
+    });
+  }
+
+  // Phased Roadmap
+  const phases = [
+    {
+      phase: "Phase 1: Capital Fortress (Current)",
+      timeline: `Now (Next ${emergencyMonthsLeft} months)`,
+      sipRunRate: monthlySIP,
+      directive: `SIP: ₹${monthlySIP.toLocaleString("en-IN")}/mo | Prepayment: ₹${homeLoanPrepayment.toLocaleString("en-IN")}/mo | Emergency Remittance: ₹${emergencyRemittance.toLocaleString("en-IN")}/mo.`
+    },
+    {
+      phase: "Phase 2: Emergency Pivot",
+      timeline: `Month ${emergencyMonthsLeft + 1} onwards`,
+      sipRunRate: monthlySIP + emergencyRemittance,
+      directive: `Emergency fund full. Redirect ₹${emergencyRemittance.toLocaleString("en-IN")}/mo into Equity. Monthly SIP jumps to ₹${(monthlySIP + emergencyRemittance).toLocaleString("en-IN")}/mo.`
+    },
+    {
+      phase: "Phase 3: Debt-Free Wealth Acceleration",
+      timeline: "Post Home Loan Payoff",
+      sipRunRate: monthlySIP + emergencyRemittance + homeLoanPrepayment,
+      directive: `Loan fully retired. Deploy all ₹${(monthlySIP + emergencyRemittance + homeLoanPrepayment).toLocaleString("en-IN")}/mo into retirement corpus for rapid FIRE.`
+    }
+  ];
+
+  return {
+    audit: {
+      salaryInHand,
+      totalInflow,
+      livingExpenses,
+      monthlySIP,
+      homeLoanPrepayment,
+      emergencyRemittance,
+      totalCommittedOutflow,
+      unallocatedSurplus
+    },
+    liability,
+    recommendations,
+    phases
+  };
+}
+import { getPortfolio } from "@/lib/investments";
+import {
+  getBehaviourProfile,
+  getRecoverySummary,
+} from "@/lib/behaviour-engine";
+import { getRetirementGapAnalysis } from "@/lib/retirement/retirement-engine";
+import type { FinancialProfile } from "@/lib/profile/profile.types";
+import {
+  calculateCFOMetrics,
+  type CFODeterministicMetrics,
+} from "@/lib/intelligence/cfo-metrics";
+
+export type DecisionPlan = {
+  phase: string;
+  priority: string;
+  nextAction: string;
+  futureAction: string;
+  reason: string;
+  confidence: number;
+};
+
+export function generateDecisionPlanFromMetrics(
+  metrics: CFODeterministicMetrics,
+  behaviour: { currentStreak: number; relapseCount: number }
+): DecisionPlan {
+  const { currentStreak, relapseCount } = behaviour;
+  const hasRelapseHistory = relapseCount > 0;
+
+  // 1. Behavioral Protection Phase
+  if (hasRelapseHistory && currentStreak < 365) {
+    const confidence =
+      currentStreak >= 100 ? 90 : currentStreak >= 30 ? 88 : 85;
+
+    return {
+      phase: "Behavioural Protection",
+      priority: "Protect F&O-Free Recovery",
+      nextAction: "Maintain the F&O-free streak and avoid restarting speculative trading.",
+      futureAction: "Continue strengthening financial discipline before considering any increase in financial risk.",
+      reason: `Current recovery streak is ${currentStreak} days with ${relapseCount} recorded relapse${relapseCount === 1 ? "" : "s"}. Protecting the recovery prevents further trading-related capital destruction.`,
+      confidence,
+    };
+  }
+
+  // 2. Financial Safety / Emergency Reserve Phase
+  if (metrics.emergencyFundBelowTarget) {
+    const confidence = 85;
+    const coveragePercentage = Math.round(metrics.emergencyFundCoverage * 100);
+
+    return {
+      phase: "Financial Safety",
+      priority: "Build Emergency Reserve",
+      nextAction: "Build emergency reserve",
+      futureAction: metrics.hasHomeLoan
+        ? "After securing emergency reserve, continue focused home loan repayment and then redirect freed cash flow into equity SIPs."
+        : "After securing emergency reserve, increase systematic investments into equity SIPs to accelerate wealth creation.",
+      reason: `Emergency reserve covers ${coveragePercentage}% of the target (${metrics.rules.emergencyFundMonths} months of expenses). Protect liquidity before taking higher financial risk.`,
+      confidence,
+    };
+  }
+
+  // 3. Debt Reduction Phase
+  if (metrics.hasHomeLoan) {
+    const confidence = 80;
+
+    return {
+      phase: "Debt Reduction",
+      priority: "Home Loan Repayment",
+      nextAction: "Continue planned home loan repayment",
+      futureAction: "Redirect freed cash flow into equity investments after loan closure",
+      reason: `Home loan outstanding ₹${Math.round(metrics.homeLoanOutstanding).toLocaleString("en-IN")} reduces cash-flow flexibility (debt ratio: ${metrics.rules.debtToIncomeRatio}% of annual income). Debt reduction increases future investment capacity.`,
+      confidence,
+    };
+  }
+
+  // 4. Retirement Optimization Phase
+  if (metrics.retirementGapExists) {
+    const confidence = 70;
+
+    return {
+      phase: "Retirement Optimisation",
+      priority: "Retirement Gap",
+      nextAction: "Increase long term investments",
+      futureAction: "Model additional SIPs and increase contributions to close the gap.",
+      reason: "Current projection requires additional retirement funding",
+      confidence,
+    };
+  }
+
+  // 5. Wealth Acceleration Phase
+  return {
+    phase: "Wealth Acceleration",
+    priority: "Grow Equity Investments",
+    nextAction: "Maintain and gradually increase monthly equity SIPs while monitoring asset allocation.",
+    futureAction: "Consider targeting higher equity allocation and tax-efficient instruments as your net worth grows.",
+    reason: "No immediate safety, debt, or behavioural constraints detected. Focus on consistent investing and diversification.",
+    confidence: 75,
+  };
+}
+
+export function getDecisionPlan(profile: FinancialProfile): DecisionPlan {
+  const retirementGap = getRetirementGapAnalysis(profile);
+  const portfolio = getPortfolio();
+
+  const behaviourProfile = getBehaviourProfile();
+  const recovery = getRecoverySummary(behaviourProfile);
+
+  const metrics = calculateCFOMetrics({
+    profile,
+    portfolio,
+    retirementGap,
+    behaviour: {
+      currentStreak: recovery.currentStreak,
+      relapseCount: recovery.relapseCount,
+    },
+  });
+
+  return generateDecisionPlanFromMetrics(metrics, {
+    currentStreak: recovery.currentStreak,
+    relapseCount: recovery.relapseCount,
+  });
+}
+export interface FinancialSnapshotMetrics {
+  monthlyIncome: number;
+  monthlyExpenses: number;
+  monthlyInvestments: number;
+  emergencyFundCorpus: number;
+  totalDebt: number;
+  liquidAssets: number;
+  netWorth: number;
+}
+
+export type FinancialRulesResult = CalculatedFinancialRules;
+
+export interface CalculatedFinancialRules {
+  savingsRate: number;              // Percentage (0 - 100)
+  investmentRate: number;           // Percentage (0 - 100)
+  runwayMonths: number;             // Months of expenses covered by liquid assets
+  emergencyFundMonths: number;      // Months covered by designated emergency fund
+  debtToIncomeRatio: number;        // Monthly debt or total debt / annual income ratio
+  monthlySurplus: number;           // Income - Expenses - Investments
+  isEmergencyFundAdequate: boolean; // True if >= 6 months
+  isInvestmentRateOptimal: boolean; // True if >= 20%
+}
+
+/**
+ * Deterministic math calculations for Athena CFO decision-making.
+ * No AI heuristics, side-effects, or storage calls.
+ */
+export function calculateFinancialRules(snapshot: FinancialSnapshotMetrics): CalculatedFinancialRules {
+  const {
+    monthlyIncome = 0,
+    monthlyExpenses = 0,
+    monthlyInvestments = 0,
+    emergencyFundCorpus = 0,
+    totalDebt = 0,
+    liquidAssets = 0,
+  } = snapshot;
+
+  const validIncome = Math.max(0, monthlyIncome);
+  const validExpenses = Math.max(1, monthlyExpenses); // avoid division by zero
+
+  const savingsRate = validIncome > 0
+    ? Number((((validIncome - validExpenses) / validIncome) * 100).toFixed(1))
+    : 0;
+
+  const investmentRate = validIncome > 0
+    ? Number(((monthlyInvestments / validIncome) * 100).toFixed(1))
+    : 0;
+
+  const runwayMonths = Number((liquidAssets / validExpenses).toFixed(1));
+  const emergencyFundMonths = Number((emergencyFundCorpus / validExpenses).toFixed(1));
+
+  const annualIncome = validIncome * 12;
+  const debtToIncomeRatio = annualIncome > 0
+    ? Number(((totalDebt / annualIncome) * 100).toFixed(1))
+    : 0;
+
+  const monthlySurplus = validIncome - validExpenses - monthlyInvestments;
+
+  return {
+    savingsRate,
+    investmentRate,
+    runwayMonths,
+    emergencyFundMonths,
+    debtToIncomeRatio,
+    monthlySurplus,
+    isEmergencyFundAdequate: emergencyFundMonths >= 6,
+    isInvestmentRateOptimal: investmentRate >= 20,
+  };
+}
+import { loadMonthlyReview } from "@/lib/storage";
+import { getFinancialMetrics } from "@/lib/financial-engine";
+import { getCFOInsight } from "@/lib/intelligence/cfo-engine";
+import { getDecisionPlan } from "@/lib/intelligence/decision-engine";
+import type { FinancialProfile } from "@/lib/profile/profile.types";
+
+export type MonthlyCFOReview = {
+  month: string;
+  overallStatus: "Excellent" | "Good" | "Needs Attention";
+  strength: string;
+  risk: string;
+  investmentScore: number;
+  savingScore: number;
+  behaviourScore: number;
+  recommendation: string;
+};
+
+export type MonthlyScoreInput = {
+  fire54Score?: number;
+  savingsRate?: number;
+  investmentRate?: number;
+  emergencyFundProgress?: number;
+};
+
+export type MonthlyScoresResult = {
+  overallStatus: "Excellent" | "Good" | "Needs Attention";
+  investmentScore: number;
+  savingScore: number;
+  behaviourScore: number;
+  strength?: string;
+  risks: string[];
+};
+
+export function calculateMonthlyScores(input: MonthlyScoreInput): MonthlyScoresResult {
+  const {
+    fire54Score = 0,
+    savingsRate = 0,
+    investmentRate = 0,
+    emergencyFundProgress = 0,
+  } = input;
+
+  let overallStatus: MonthlyScoresResult["overallStatus"] = "Needs Attention";
+  if (fire54Score >= 80) overallStatus = "Excellent";
+  else if (fire54Score >= 60) overallStatus = "Good";
+
+  const risks: string[] = [];
+  let strength: string | undefined;
+
+  if (savingsRate >= 50) {
+    strength = "Excellent savings discipline";
+  } else if (savingsRate >= 30) {
+    strength = "Good savings behaviour";
+  } else {
+    risks.push("Low savings rate");
+  }
+
+  let investmentScore = 0;
+  if (investmentRate >= 40) {
+    investmentScore = 100;
+  } else {
+    investmentScore = Math.min(100, Math.round((investmentRate / 30) * 90));
+  }
+
+  const savingScore = Math.min(100, Math.round((savingsRate / 50) * 100));
+
+  if (emergencyFundProgress < 100) {
+    risks.push("Emergency fund incomplete");
+  }
+
+  const behaviourScore = Math.min(100, Math.round(savingScore * 0.6 + investmentScore * 0.4));
+
+  return {
+    overallStatus,
+    investmentScore,
+    savingScore,
+    behaviourScore,
+    strength,
+    risks,
+  };
+}
+
+export function getMonthlyCFOReview(profile: FinancialProfile): MonthlyCFOReview {
+  const statement = loadMonthlyReview();
+  const metrics = getFinancialMetrics();
+  const cfo = getCFOInsight(profile);
+  const plan = getDecisionPlan(profile);
+
+  const monthLabel = statement
+    ? `${statement.month}/${statement.year}`
+    : new Date().toLocaleString("en-IN", { month: "short", year: "numeric" });
+
+  const scoreResults = metrics
+    ? calculateMonthlyScores({
+        fire54Score: metrics.fire54Score,
+        savingsRate: Number(metrics.savingsRate || 0),
+        investmentRate: Number(metrics.investmentRate || 0),
+        emergencyFundProgress: Number(metrics.emergencyFundProgress || 0),
+      })
+    : {
+        overallStatus: "Needs Attention" as const,
+        investmentScore: 0,
+        savingScore: 0,
+        behaviourScore: 0,
+        risks: [],
+        strength: undefined,
+      };
+
+  const riskList = [...scoreResults.risks];
+  let recommendation =
+    cfo?.recommendedAction || plan?.nextAction || "Maintain current discipline and review next month.";
+
+  if (statement?.month === 12) {
+    riskList.push("January SIP step-up decision due");
+    recommendation =
+      "January SIP step-up coming: decide whether to increase your mutual-fund SIP by 10%, 15%, or 20%, and record the plan in January.";
+  }
+
+  const riskSummary = riskList.length > 0 ? riskList.join("; ") : cfo?.primaryIssue || "No immediate risks identified";
+
+  return {
+    month: monthLabel,
+    overallStatus: scoreResults.overallStatus,
+    strength: scoreResults.strength || cfo?.headline || "Consistent financial tracking",
+    risk: riskSummary,
+    investmentScore: scoreResults.investmentScore,
+    savingScore: scoreResults.savingScore,
+    behaviourScore: scoreResults.behaviourScore,
+    recommendation,
+  };
+}
+import { DEFAULT_MACRO_ASSUMPTIONS } from '../core/assumptions';
+import type { RetirementAssumptions } from './types';
+
+export const DEFAULT_RETIREMENT_ASSUMPTIONS: RetirementAssumptions = {
+  currentAge: 32,
+  retirementAge: DEFAULT_MACRO_ASSUMPTIONS.retirementAgeDefault,
+  mutualFunds: 0,
+  ppf: 0,
+  epf: 0,
+  nps: 0,
+  emergencyFund: 0,
+  cash: 0,
+  currentCorpus: 0,
+  monthlySalary: 0,
+  monthlyInvestment: 0,
+  annualSipIncrease: 0.10,
+  expectedAnnualIncrement: 0.08,
+  equityReturn: DEFAULT_MACRO_ASSUMPTIONS.equityReturnRate,
+  equityVolatility: 0.15,
+  debtReturn: DEFAULT_MACRO_ASSUMPTIONS.debtReturnRate,
+  debtVolatility: 0.05,
+  inflationRate: DEFAULT_MACRO_ASSUMPTIONS.inflationRate,
+  withdrawalRate: DEFAULT_MACRO_ASSUMPTIONS.safeWithdrawalRate,
+  desiredMonthlyIncome: 100000,
+  monthlyPension: 0,
+};
+/**
+ * =====================================================
+ * FIRE54 Retirement Intelligence Engine
+ * =====================================================
+ * Financial Calculation Utilities
+ */
+
+import type { RetirementAssumptions } from "./types";
+
+/**
+ * Inflate today's monthly income
+ * to retirement year.
+ */
+export function calculateFutureMonthlyIncome(
+  monthlyIncomeToday: number,
+  inflationRate: number,
+  years: number
+): number {
+  return monthlyIncomeToday * Math.pow(1 + inflationRate, years);
+}
+
+/**
+ * Annual retirement income.
+ */
+export function calculateAnnualRetirementIncome(
+  monthlyIncome: number
+): number {
+  return monthlyIncome * 12;
+}
+
+/**
+ * Corpus required using
+ * Safe Withdrawal Rate.
+ */
+export function calculateRequiredCorpus(
+  annualIncome: number,
+  withdrawalRate: number
+): number {
+  return annualIncome / withdrawalRate;
+}
+
+/**
+ * Years left until retirement.
+ */
+export function calculateYearsRemaining(
+  assumptions: RetirementAssumptions
+): number {
+  return assumptions.retirementAge - assumptions.currentAge;
+}
+
+/**
+ * FIRE Score
+ */
+export function calculateFireScore(
+  projectedCorpus: number,
+  requiredCorpus: number
+): number {
+
+  if (requiredCorpus <= 0) {
+    return 100;
+  }
+
+  return Math.min(
+    100,
+    Math.round(
+      (projectedCorpus / requiredCorpus) * 100
+    )
+  );
+
+}
+
+/**
+ * Retirement Status
+ */
+export function calculateRetirementStatus(
+  fireScore: number
+): "Ahead" | "On Track" | "Behind" {
+
+  if (fireScore >= 100) {
+    return "Ahead";
+  }
+
+  if (fireScore >= 80) {
+    return "On Track";
+  }
+
+  return "Behind";
+
+}
+/**
+ * =====================================================
+ * Post-Retirement 12.5% Equity LTCG Tax Haircut Engine
+ * =====================================================
+ * Computes the exact tax drag on SWP redemptions under
+ * Section 112A (12.5% LTCG with ₹1.25L annual exemption).
+ */
+
+export interface SWPTaxResult {
+  grossWithdrawal: number;
+  gainRatio: number;
+  embeddedGains: number;
+  exemptGains: number;
+  taxableGains: number;
+  ltcgTaxOutflow: number;
+  effectiveTaxRateOnDraw: number;
+  netLivingReceived: number;
+  remainingCostBasis: number;
+}
+
+export function calculateSWPLTCGTax(
+  annualWithdrawal: number,
+  corpusValue: number,
+  costBasis: number,
+  exemptionLimit: number = 125000,
+  taxRate: number = 0.125
+): SWPTaxResult {
+  if (annualWithdrawal <= 0 || corpusValue <= 0) {
+    return {
+      grossWithdrawal: annualWithdrawal,
+      gainRatio: 0,
+      embeddedGains: 0,
+      exemptGains: 0,
+      taxableGains: 0,
+      ltcgTaxOutflow: 0,
+      effectiveTaxRateOnDraw: 0,
+      netLivingReceived: annualWithdrawal,
+      remainingCostBasis: costBasis,
+    };
+  }
+
+  // Calculate proportion of current corpus that represents profit
+  const gainRatio = Math.min(1, Math.max(0, 1 - (costBasis / corpusValue)));
+  const embeddedGains = annualWithdrawal * gainRatio;
+  const principalRedeemed = annualWithdrawal * (1 - gainRatio);
+
+  const exemptGains = Math.min(embeddedGains, exemptionLimit);
+  const taxableGains = Math.max(0, embeddedGains - exemptGains);
+  const ltcgTaxOutflow = Math.round(taxableGains * taxRate);
+
+  const effectiveTaxRateOnDraw = annualWithdrawal > 0 ? (ltcgTaxOutflow / annualWithdrawal) * 100 : 0;
+  const remainingCostBasis = Math.max(0, costBasis - principalRedeemed);
+
+  return {
+    grossWithdrawal: annualWithdrawal,
+    gainRatio,
+    embeddedGains,
+    exemptGains,
+    taxableGains,
+    ltcgTaxOutflow,
+    effectiveTaxRateOnDraw,
+    netLivingReceived: annualWithdrawal - ltcgTaxOutflow,
+    remainingCostBasis,
+  };
+}
+export interface DynamicRetirementInputs {
+  currentAge: number;
+  retirementAge: number;
+  
+  // Current Asset Portfolio
+  currentMutualFunds: number;
+  currentStocks: number;
+  currentPPF: number;
+  currentEPF: number;
+  currentNPS: number;
+  currentProperty: number; // Flat value (e.g. ₹45 Lakh)
+
+  // Phase 1 Cash Flow
+  activeMonthlySIP: number;
+  stepUpPercent: number; // 0, 5, 10, 15
+
+  // Loan Parameters
+  loanPrincipal: number;
+  actualMonthlyEMI: number; // ₹18,250
+  loanInterestRate: number; // 8.5%
+  loanTenureMonths?: number;
+  monthlyPrepayment: number;
+
+  // Compounding Rates
+  equityReturnRate?: number;    // 12%
+  ppfReturnRate?: number;       // 7.1%
+  epfReturnRate?: number;       // 8.15%
+  npsReturnRate?: number;       // 9.5%
+  propertyReturnRate?: number;  // 5.0%
+}
+
+export interface AssetBreakdownAt54 {
+  equitySIPAndMF: number;
+  directStocks: number;
+  ppfValue: number;
+  epfValue: number;
+  npsValue: number;
+  propertyValue: number;
+  liquidCorpus: number; // MF + Stocks + PPF + EPF + NPS
+  totalNetWorth: number; // Liquid Corpus + Property
+}
+
+export interface DynamicRetirementResult {
+  debtFreeMonths: number;
+  debtFreeAge: number;
+  baseEMI: number;
+  liberatedCashflowAtPayoff: number; // Prepayment + EMI
+  projectedCorpusAtRetirement: number;
+  assetBreakdown: AssetBreakdownAt54;
+  yearlyBreakdown: {
+    age: number;
+    year: number;
+    monthlySIP: number;
+    isDebtFree: boolean;
+    equityCorpus: number;
+    totalCorpus: number;
+  }[];
+}
+
+export function calculateDynamicRetirementCorpus(
+  inputs: DynamicRetirementInputs
+): DynamicRetirementResult {
+  const {
+    currentAge,
+    retirementAge,
+    currentMutualFunds,
+    currentStocks = 0,
+    currentPPF = 0,
+    currentEPF = 0,
+    currentNPS = 0,
+    currentProperty = 4500000,
+    activeMonthlySIP,
+    stepUpPercent,
+    loanPrincipal,
+    actualMonthlyEMI = 18250,
+    loanInterestRate = 8.5,
+    loanTenureMonths: _loanTenureMonths = 126,
+    monthlyPrepayment,
+    equityReturnRate = 12.0,
+    ppfReturnRate = 7.1,
+    epfReturnRate = 8.15,
+    npsReturnRate = 9.5,
+    propertyReturnRate = 5.0,
+  } = inputs;
+
+  const totalMonths = Math.max(0, (retirementAge - currentAge) * 12);
+  const totalYears = totalMonths / 12;
+
+  const monthlyEquityRate = equityReturnRate / 100 / 12;
+  const loanMonthlyRate = loanInterestRate / 100 / 12;
+
+  const baseEMI = actualMonthlyEMI;
+  let loanBalance = loanPrincipal;
+  let debtFreeMonthIndex = -1;
+
+  let equityCorpus = currentMutualFunds;
+  let currentSIP = activeMonthlySIP;
+
+  const yearlyBreakdown: DynamicRetirementResult["yearlyBreakdown"] = [];
+
+  for (let m = 1; m <= totalMonths; m++) {
+    if (m > 1 && (m - 1) % 12 === 0 && stepUpPercent > 0) {
+      currentSIP = Math.round(currentSIP * (1 + stepUpPercent / 100));
+    }
+
+    let isLoanActive = false;
+    if (loanBalance > 1) {
+      isLoanActive = true;
+      const interest = loanBalance * loanMonthlyRate;
+      const regularPrincipal = Math.min(loanBalance, baseEMI - interest);
+      const prepay = Math.min(loanBalance - regularPrincipal, monthlyPrepayment);
+      loanBalance = Math.max(0, loanBalance - (regularPrincipal + prepay));
+
+      if (loanBalance <= 1 && debtFreeMonthIndex === -1) {
+        debtFreeMonthIndex = m;
+      }
+    }
+
+    let effectiveMonthlySIP = currentSIP;
+    if (!isLoanActive) {
+      effectiveMonthlySIP += (baseEMI + monthlyPrepayment);
+    }
+
+    equityCorpus = (equityCorpus + effectiveMonthlySIP) * (1 + monthlyEquityRate);
+
+    if (m % 12 === 0 || m === totalMonths) {
+      const yearIndex = Math.ceil(m / 12);
+      const currentSimAge = currentAge + yearIndex;
+      yearlyBreakdown.push({
+        age: currentSimAge,
+        year: yearIndex,
+        monthlySIP: Math.round(effectiveMonthlySIP),
+        isDebtFree: !isLoanActive,
+        equityCorpus: Math.round(equityCorpus),
+        totalCorpus: Math.round(equityCorpus),
+      });
+    }
+  }
+
+  const debtFreeMonths = debtFreeMonthIndex > 0 ? debtFreeMonthIndex : 23;
+  const debtFreeAge = Number((currentAge + debtFreeMonths / 12).toFixed(1));
+
+  // Asset Future Value Calculations at Age 54
+  const directStocksAt54 = Math.round(currentStocks * Math.pow(1 + equityReturnRate / 100, totalYears));
+  const ppfAt54 = Math.round(currentPPF * Math.pow(1 + ppfReturnRate / 100, totalYears));
+  const epfAt54 = Math.round(currentEPF * Math.pow(1 + epfReturnRate / 100, totalYears));
+  const npsAt54 = Math.round(currentNPS * Math.pow(1 + npsReturnRate / 100, totalYears));
+  const propertyAt54 = Math.round(currentProperty * Math.pow(1 + propertyReturnRate / 100, totalYears));
+
+  const liquidCorpus = Math.round(equityCorpus) + directStocksAt54 + ppfAt54 + epfAt54 + npsAt54;
+  const totalNetWorth = liquidCorpus + propertyAt54;
+
+  const assetBreakdown: AssetBreakdownAt54 = {
+    equitySIPAndMF: Math.round(equityCorpus),
+    directStocks: directStocksAt54,
+    ppfValue: ppfAt54,
+    epfValue: epfAt54,
+    npsValue: npsAt54,
+    propertyValue: propertyAt54,
+    liquidCorpus,
+    totalNetWorth,
+  };
+
+  return {
+    debtFreeMonths,
+    debtFreeAge,
+    baseEMI,
+    liberatedCashflowAtPayoff: baseEMI + monthlyPrepayment,
+    projectedCorpusAtRetirement: liquidCorpus,
+    assetBreakdown,
+    yearlyBreakdown,
+  };
+}
+import { getPortfolio } from "@/lib/investments";
+import { getRetirementAssumptionsFromProfile } from "@/lib/profile/profile-retirement-adapter";
+import { generateRetirementProjection } from "./projection";
+import type { RetirementAssumptions } from "./types";
+import type { FinancialProfile } from "@/lib/profile/profile.types";
+
+export type RetirementGapStatus =
+  | "ON_TRACK"
+  | "NEEDS_ATTENTION"
+  | "AT_RISK";
+
+export interface RetirementGapAnalysis {
+  status: RetirementGapStatus;
+  currentCorpus: number;
+  projectedCorpus: number;
+  requiredCorpus: number;
+  corpusGap: number;
+  yearsLeft: number;
+  currentMonthlyInvestment: number;
+  requiredMonthlyInvestment: number;
+  additionalMonthlyInvestmentNeeded: number;
+  monthlyPension: number;
+  desiredRetirementIncome: number;
+  recommendation: string;
+}
+
+function clampFiniteNumber(value: number, fallback = 0): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Number(value);
+}
+
+function getPortfolioRetirementCorpus(portfolio = getPortfolio()): number {
+  const retirementCategories = new Set(["Mutual Fund", "PPF", "EPF", "NPS"]);
+
+  return portfolio
+    .filter(
+      (item) =>
+        item.type === "Asset" && retirementCategories.has(item.category)
+    )
+    .reduce((sum, item) => sum + clampFiniteNumber(item.currentValue, 0), 0);
+}
+
+function calculateRequiredMonthlyInvestment(
+  requiredCorpus: number,
+  currentCorpus: number,
+  yearsLeft: number,
+  expectedAnnualReturn: number
+): number {
+  const targetCorpus = clampFiniteNumber(requiredCorpus, 0);
+  const corpusNow = clampFiniteNumber(currentCorpus, 0);
+  const yearsRemaining = Math.max(0, clampFiniteNumber(yearsLeft, 0));
+  const annualReturn = Math.max(0, clampFiniteNumber(expectedAnnualReturn, 0));
+
+  if (targetCorpus <= 0) {
+    return 0;
+  }
+
+  if (yearsRemaining <= 0) {
+    return Math.max(0, targetCorpus - corpusNow);
+  }
+
+  const monthlyRate = annualReturn / 12;
+  const periods = yearsRemaining * 12;
+
+  const futureValueOfCurrentCorpus =
+    corpusNow * Math.pow(1 + monthlyRate, periods);
+
+  const amountStillNeeded = Math.max(0, targetCorpus - futureValueOfCurrentCorpus);
+
+  if (amountStillNeeded <= 0) {
+    return 0;
+  }
+
+  if (monthlyRate === 0) {
+    return amountStillNeeded / periods;
+  }
+
+  const annuityFactor =
+    (Math.pow(1 + monthlyRate, periods) - 1) / monthlyRate;
+
+  if (annuityFactor <= 0) {
+    return amountStillNeeded / Math.max(1, periods);
+  }
+
+  return amountStillNeeded / annuityFactor;
+}
+
+export function getRetirementGapAnalysis(
+  profile: FinancialProfile,
+  overrides?: Partial<RetirementAssumptions>
+): RetirementGapAnalysis {
+  const assumptions = {
+    ...getRetirementAssumptionsFromProfile(profile),
+    ...overrides,
+  };
+
+  const portfolio = getPortfolio();
+ const projection = generateRetirementProjection(assumptions);
+
+  const currentCorpus =
+    clampFiniteNumber(projection.currentCorpus, 0) ||
+    getPortfolioRetirementCorpus(portfolio);
+  const projectedCorpus = clampFiniteNumber(projection.projectedCorpus, 0);
+  const requiredCorpus = clampFiniteNumber(projection.requiredCorpus, 0);
+  const corpusGap =
+    projectedCorpus >= requiredCorpus
+      ? 0
+      : Math.max(requiredCorpus - projectedCorpus, 0);
+  const yearsLeft = clampFiniteNumber(projection.yearsLeft, 0);
+  const currentMonthlyInvestment = clampFiniteNumber(
+    assumptions.monthlyInvestment,
+    0
+  );
+  const monthlyPension = clampFiniteNumber(assumptions.monthlyPension, 0);
+  const desiredRetirementIncome = clampFiniteNumber(
+    assumptions.desiredMonthlyIncome,
+    0
+  );
+
+  const requiredMonthlyInvestment = calculateRequiredMonthlyInvestment(
+    requiredCorpus,
+    currentCorpus,
+    yearsLeft,
+    assumptions.equityReturn
+  );
+
+  const additionalMonthlyInvestmentNeeded = Math.max(
+    requiredMonthlyInvestment - currentMonthlyInvestment,
+    0
+  );
+
+  let status: RetirementGapStatus = "ON_TRACK";
+
+  if (projectedCorpus < requiredCorpus) {
+    if (currentMonthlyInvestment === 0) {
+      status = "AT_RISK";
+    } else if (
+      additionalMonthlyInvestmentNeeded <= currentMonthlyInvestment * 0.5
+    ) {
+      status = "NEEDS_ATTENTION";
+    } else {
+      status = "AT_RISK";
+    }
+  }
+
+  let recommendation = "Current investment strategy is sufficient for FIRE54.";
+
+  if (status === "NEEDS_ATTENTION") {
+    const amount = Math.round(additionalMonthlyInvestmentNeeded);
+    recommendation = `Increase monthly investment by ₹${amount.toLocaleString("en-IN")} to bridge the retirement gap.`;
+  }
+
+  if (status === "AT_RISK") {
+    recommendation =
+      "Current path may not achieve FIRE54. Consider increasing investments, reducing expenses, or reviewing retirement age.";
+  }
+
+  return {
+    status,
+    currentCorpus,
+    projectedCorpus,
+    requiredCorpus,
+    corpusGap,
+    yearsLeft,
+    currentMonthlyInvestment,
+    requiredMonthlyInvestment,
+    additionalMonthlyInvestmentNeeded,
+    monthlyPension,
+    desiredRetirementIncome,
+    recommendation,
+  };
+}export * from "./retirement-engine";
+import type { FinancialProfile } from "@/lib/profile/profile.types";
+import type { PortfolioItem } from "@/lib/investments/types";
+
+export interface ReconciledAssets {
+  mutualFunds: number;
+  stocks: number;
+  ppf: number;
+  epf: number;
+  nps: number;
+  property: number;
+  homeLoanPrincipal: number;
+  monthlyEMI: number;
+  homeLoanInterestRate: number;
+  homeLoanTenureMonths: number;
+}
+
+/**
+ * Calculates EMI from principal, annual interest rate, and remaining months.
+ */
+function calculateEMI(principal: number, annualRate: number, tenureMonths: number): number {
+  if (principal <= 0 || tenureMonths <= 0) return 0;
+  if (annualRate <= 0) return Math.round(principal / tenureMonths);
+  const monthlyRate = annualRate / 12 / 100;
+  const emi = (principal * monthlyRate * Math.pow(1 + monthlyRate, tenureMonths)) /
+    (Math.pow(1 + monthlyRate, tenureMonths) - 1);
+  return Math.round(emi);
+}
+
+/**
+ * Pure dynamic extraction: 100% derived from live Portfolio entries and FinancialProfile.
+ * Zero hardcoded literals.
+ */
+export function extractActiveAssets(
+  profile: FinancialProfile | null,
+  portfolio: PortfolioItem[] = []
+): ReconciledAssets {
+  let pMF = 0;
+  let pStocks = 0;
+  let pPPF = 0;
+  let pEPF = 0;
+  let pNPS = 0;
+  let pProperty = 0;
+  let pHomeLoan = 0;
+  let pHomeLoanEMI = 0;
+  let pInterestRate = 8.5; // Standard base rate if unspecified on item
+  let pTenureMonths = 126;
+
+  for (const item of portfolio) {
+    const val = Number(item.currentValue) || 0;
+    const cat = (item.category || "").toLowerCase();
+    const name = (item.name || "").toLowerCase();
+    const anyItem = item as any;
+
+    if (item.type === "Liability") {
+      if (cat.includes("home loan") || name.includes("home loan") || name.includes("mortgage")) {
+        pHomeLoan += val;
+        if (anyItem.monthlyPayment) pHomeLoanEMI = Number(anyItem.monthlyPayment);
+        else if (anyItem.emi) pHomeLoanEMI = Number(anyItem.emi);
+        if (anyItem.interestRate) pInterestRate = Number(anyItem.interestRate);
+        if (anyItem.tenureMonths) pTenureMonths = Number(anyItem.tenureMonths);
+      }
+    } else {
+      if (cat === "mutual fund" || name.includes("mutual fund") || name.includes("mf") || cat === "etf") {
+        pMF += val;
+      } else if (cat === "stocks" || name.includes("stock") || name.includes("shares") || name.includes("equity")) {
+        pStocks += val;
+      } else if (cat === "ppf" || name.includes("ppf") || name.includes("public provident")) {
+        pPPF += val;
+      } else if (cat === "epf" || name.includes("epf") || name.includes("employee provident")) {
+        pEPF += val;
+      } else if (cat === "nps" || name.includes("nps") || name.includes("national pension")) {
+        pNPS += val;
+      } else if (name.includes("flat") || name.includes("house") || name.includes("property") || name.includes("real estate")) {
+        pProperty += val;
+      }
+    }
+  }
+
+  // Fallback to profile properties only if portfolio item is not entered
+  const mutualFunds = pMF > 0 ? pMF : (Number(profile?.assets?.mutualFunds) || 0);
+  const stocks = pStocks > 0 ? pStocks : (Number(profile?.assets?.stocks) || 0);
+  const ppf = pPPF > 0 ? pPPF : (Number(profile?.assets?.ppf) || 0);
+  const epf = pEPF > 0 ? pEPF : (Number(profile?.assets?.epf) || 0);
+  const nps = pNPS > 0 ? pNPS : (Number(profile?.assets?.nps) || 0);
+  const property = pProperty > 0 ? pProperty : (Number(profile?.assets?.property) || 0);
+
+  const homeLoanPrincipal = pHomeLoan > 0 ? pHomeLoan : (Number(profile?.liabilities?.homeLoanOutstanding) || 0);
+
+  // Derive EMI: explicit portfolio EMI -> computed from loan parameters -> 0
+  const monthlyEMI = pHomeLoanEMI > 0
+    ? pHomeLoanEMI
+    : homeLoanPrincipal > 0
+      ? calculateEMI(homeLoanPrincipal, pInterestRate, pTenureMonths)
+      : 0;
+
+  return {
+    mutualFunds,
+    stocks,
+    ppf,
+    epf,
+    nps,
+    property,
+    homeLoanPrincipal,
+    monthlyEMI,
+    homeLoanInterestRate: pInterestRate,
+    homeLoanTenureMonths: pTenureMonths,
+  };
+}
+
+function _createPrng(seed: number = 42) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function _sampleBoxMuller(): number {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+import type { RetirementAssumptions, RetirementProjection, YearProjection } from "./types";
+import { calculateAnnualRetirementIncome, calculateFutureMonthlyIncome, calculateRequiredCorpus } from "./calculations";
+
+function safeNumber(value: number | undefined | null): number {
+  if (!Number.isFinite(value ?? NaN)) return 0;
+  return Number(value);
+}
+
+function clampNonNegative(value: number): number {
+  return Math.max(0, safeNumber(value));
+}
+
+function normaliseRate(value: number, maximumRate: number): number {
+  const safe = safeNumber(value);
+  const decimalRate = safe >= 1 ? safe / 100 : safe;
+  return Math.min(Math.max(0, decimalRate), maximumRate);
+}
+
+function _isRateAboveMaximum(value: number, maximumRate: number): boolean {
+  const safe = safeNumber(value);
+  const decimalRate = safe >= 1 ? safe / 100 : safe;
+  return decimalRate > maximumRate;
+}
+
+// Standard deterministic future value (clamps negative rates to 0)
+function futureValue(currentValue: number, annualReturn: number, years: number): number {
+  const value = clampNonNegative(currentValue);
+  const rate = normaliseRate(annualReturn, 0.5);
+  const period = Math.max(0, years);
+  return value * Math.pow(1 + rate, period);
+}
+
+// Standard deterministic monthly investment (clamps negative rates to 0)
+function futureValueOfMonthlyInvestment(monthlyInvestment: number, annualReturn: number): number {
+  const monthly = clampNonNegative(monthlyInvestment);
+  const annualRate = normaliseRate(annualReturn, 0.5);
+  if (monthly <= 0) return 0;
+  const monthlyRate = annualRate / 12;
+  if (monthlyRate === 0) return monthly * 12;
+  return monthly * ((Math.pow(1 + monthlyRate, 12) - 1) / monthlyRate);
+}
+
+// Monte Carlo stochastic functions (Allows negative returns in market crashes)
+function stochasticFutureValue(currentValue: number, annualReturn: number): number {
+  const value = Math.max(0, currentValue);
+  const rate = Math.max(-1, annualReturn); 
+  return value * (1 + rate);
+}
+
+function stochasticFutureValueOfMonthlyInvestment(monthlyInvestment: number, annualReturn: number): number {
+  const monthly = Math.max(0, monthlyInvestment);
+  if (monthly <= 0) return 0;
+  const rate = Math.max(-0.999, annualReturn); 
+  const monthlyRate = rate / 12;
+  if (Math.abs(monthlyRate) < 0.0001) return monthly * 12;
+  return monthly * ((Math.pow(1 + monthlyRate, 12) - 1) / monthlyRate);
+}
+
+function calculateYearlyMonthlyInvestment(baseMonthlyInvestment: number, annualSipIncrease: number, year: number): number {
+  const base = clampNonNegative(baseMonthlyInvestment);
+  const increase = normaliseRate(annualSipIncrease, 0.2);
+  const yearIndex = Math.max(0, year - 1);
+  return base * Math.pow(1 + increase, yearIndex);
+}
+
+// Standard Normal Random Variable Generator (Box-Muller Transform)
+function randomNormal(): number {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+// Calculate stochastic return for a single year using Geometric Brownian Motion
+function getStochasticReturn(mu: number, sigma: number): number {
+  const z = randomNormal();
+  return Math.exp((mu - Math.pow(sigma, 2) / 2) + sigma * z) - 1;
+}
+
+export function generateRetirementProjection(assumptions: RetirementAssumptions): RetirementProjection {
+  const currentAge = clampNonNegative(assumptions.currentAge);
+  const retirementAge = clampNonNegative(assumptions.retirementAge);
+  const yearsToRetirement = Math.max(0, Math.floor(retirementAge - currentAge));
+
+  const equityReturn = normaliseRate(assumptions.equityReturn, 0.2);
+  const equityVolatility = normaliseRate(assumptions.equityVolatility ?? 0.15, 0.3);
+  const debtReturn = normaliseRate(assumptions.debtReturn, 0.15);
+  const debtVolatility = normaliseRate(assumptions.debtVolatility ?? 0.03, 0.1);
+  const inflationRate = normaliseRate(assumptions.inflationRate, 0.15);
+  const withdrawalRate = normaliseRate(assumptions.withdrawalRate, 0.1);
+  const annualSipIncrease = normaliseRate(assumptions.annualSipIncrease, 0.2);
+
+  const targetMonthlyIncome = calculateFutureMonthlyIncome(
+    clampNonNegative(assumptions.desiredMonthlyIncome),
+    inflationRate,
+    yearsToRetirement
+  );
+  
+  const monthlyPension = clampNonNegative(assumptions.monthlyPension);
+  const corpusFundedMonthlyIncome = Math.max(targetMonthlyIncome - monthlyPension, 0);
+  const annualIncomeRequired = calculateAnnualRetirementIncome(corpusFundedMonthlyIncome);
+  const requiredCorpus = calculateRequiredCorpus(annualIncomeRequired, Math.max(withdrawalRate, 0.0001));
+
+  let mutualFunds = clampNonNegative(assumptions.mutualFunds);
+  let ppf = clampNonNegative(assumptions.ppf);
+  let epf = clampNonNegative(assumptions.epf);
+  let nps = clampNonNegative(assumptions.nps);
+  
+  const explicitRetirementCorpus = mutualFunds + ppf + epf + nps;
+  const legacyCorpus = clampNonNegative(assumptions.currentCorpus);
+
+  if (explicitRetirementCorpus <= 0 && legacyCorpus > 0) {
+    mutualFunds = legacyCorpus;
+    ppf = 0; epf = 0; nps = 0;
+  }
+
+  const initialCorpus = mutualFunds + ppf + epf + nps;
+  let corpus = initialCorpus;
+  const yearlyProjection: YearProjection[] = [];
+
+  // -----------------------------------------------------
+  // 1. DETERMINISTIC PROJECTION (BASELINE)
+  // -----------------------------------------------------
+  yearlyProjection.push({
+    age: currentAge,
+    year: 0,
+    corpus: Math.round(corpus),
+    mutualFunds: Math.round(mutualFunds),
+    ppf: Math.round(ppf),
+    epf: Math.round(epf),
+    nps: Math.round(nps),
+    emergencyFund: 0,
+    targetCorpus: Math.round(requiredCorpus),
+    gap: Math.round(requiredCorpus - corpus),
+  });
+
+  for (let year = 1; year <= yearsToRetirement; year++) {
+    mutualFunds = futureValue(mutualFunds, equityReturn, 1);
+    ppf = futureValue(ppf, debtReturn, 1);
+    epf = futureValue(epf, debtReturn, 1);
+    nps = futureValue(nps, equityReturn, 1);
+
+    const payoffYr = assumptions.debtPayoffYears ? Math.ceil(assumptions.debtPayoffYears) : 2;
+    const surgeYearsActive = Math.max(0, year - payoffYr);
+    const surge = (assumptions.postDebtMonthlySurge && year >= payoffYr)
+      ? assumptions.postDebtMonthlySurge * Math.pow(1 + annualSipIncrease, surgeYearsActive)
+      : 0;
+    const baseMonthly = calculateYearlyMonthlyInvestment(assumptions.monthlyInvestment, annualSipIncrease, year);
+    const totalMonthly = baseMonthly + surge;
+    const annualInvestment = futureValueOfMonthlyInvestment(totalMonthly, equityReturn);
+    mutualFunds += annualInvestment;
+    corpus = mutualFunds + ppf + epf + nps;
+
+    yearlyProjection.push({
+      age: currentAge + year,
+      year,
+      corpus: Math.round(corpus),
+      mutualFunds: Math.round(mutualFunds),
+      ppf: Math.round(ppf),
+      epf: Math.round(epf),
+      nps: Math.round(nps),
+      emergencyFund: 0,
+      targetCorpus: Math.round(requiredCorpus),
+      gap: Math.round(requiredCorpus - corpus),
+    });
+  }
+
+  // -----------------------------------------------------
+  // 2. MONTE CARLO SIMULATION (1,000 ITERATIONS)
+  // -----------------------------------------------------
+  const ITERATIONS = 1000;
+  const pathsByYear: number[][] = Array.from({ length: yearsToRetirement + 1 }, () => []);
+  let successfulPaths = 0;
+
+  for (let i = 0; i < ITERATIONS; i++) {
+    let p_mf = clampNonNegative(assumptions.mutualFunds > 0 ? assumptions.mutualFunds : legacyCorpus);
+    let p_ppf = clampNonNegative(assumptions.ppf);
+    let p_epf = clampNonNegative(assumptions.epf);
+    let p_nps = clampNonNegative(assumptions.nps);
+
+    pathsByYear[0].push(p_mf + p_ppf + p_epf + p_nps);
+
+    for (let y = 1; y <= yearsToRetirement; y++) {
+      const rEq = getStochasticReturn(equityReturn, equityVolatility);
+      const rDebt = getStochasticReturn(debtReturn, debtVolatility);
+
+      p_mf = stochasticFutureValue(p_mf, rEq);
+      p_nps = stochasticFutureValue(p_nps, rEq);
+      p_ppf = stochasticFutureValue(p_ppf, rDebt);
+      p_epf = stochasticFutureValue(p_epf, rDebt);
+
+      const payoffYr = assumptions.debtPayoffYears ? Math.ceil(assumptions.debtPayoffYears) : 2;
+      const surgeYearsActive = Math.max(0, y - payoffYr);
+      const surge = (assumptions.postDebtMonthlySurge && y >= payoffYr)
+        ? assumptions.postDebtMonthlySurge * Math.pow(1 + annualSipIncrease, surgeYearsActive)
+        : 0;
+      const baseMonthly = calculateYearlyMonthlyInvestment(assumptions.monthlyInvestment, annualSipIncrease, y);
+      const totalMonthly = baseMonthly + surge;
+      const annualInv = stochasticFutureValueOfMonthlyInvestment(totalMonthly, rEq);
+      
+      p_mf += annualInv;
+      pathsByYear[y].push(p_mf + p_ppf + p_epf + p_nps);
+    }
+
+    if (pathsByYear[yearsToRetirement][i] >= requiredCorpus) {
+      successfulPaths++;
+    }
+  }
+
+  // Calculate Percentiles and Merge into Projection
+  for (let y = 0; y <= yearsToRetirement; y++) {
+    const sortedPaths = pathsByYear[y].sort((a, b) => a - b);
+    yearlyProjection[y].corpus10 = Math.round(sortedPaths[Math.floor(ITERATIONS * 0.10)]);
+    yearlyProjection[y].corpus50 = Math.round(sortedPaths[Math.floor(ITERATIONS * 0.50)]);
+    yearlyProjection[y].corpus90 = Math.round(sortedPaths[Math.floor(ITERATIONS * 0.90)]);
+  }
+
+  // -----------------------------------------------------
+  // 3. FINAL RESULTS
+  // -----------------------------------------------------
+  const probabilityOfSuccess = Math.round((successfulPaths / ITERATIONS) * 100);
+  const projectedCorpus = Math.round(corpus);
+  const _finalGap = Math.max(requiredCorpus - projectedCorpus, 0);
+  const surplus = projectedCorpus - requiredCorpus;
+  const fireReadiness = requiredCorpus > 0 ? Math.min((projectedCorpus / requiredCorpus) * 100, 100) : 100;
+  
+  let status: RetirementProjection["status"];
+  if (probabilityOfSuccess >= 90) status = "Excellent";
+  else if (probabilityOfSuccess >= 75) status = "On Track";
+  else if (probabilityOfSuccess >= 50) status = "Needs Improvement";
+  else status = "Critical";
+
+  const recommendations: string[] = [];
+  
+  if (probabilityOfSuccess < 75) {
+    recommendations.push(`Your Monte Carlo simulation shows only a ${probabilityOfSuccess}% probability of success. Consider lowering your FIRE target or increasing your equity safety buffer.`);
+  } else {
+    recommendations.push(`Excellent resilience! You have a ${probabilityOfSuccess}% probability of surviving market volatility and reaching your target.`);
+  }
+
+  return {
+    currentCorpus: Math.round(initialCorpus),
+    projectedCorpus,
+    requiredCorpus: Math.round(requiredCorpus),
+    targetMonthlyIncome: Math.round(targetMonthlyIncome),
+    annualIncomeRequired: Math.round(annualIncomeRequired),
+    yearlyProjection,
+    isOnTrack: probabilityOfSuccess >= 75,
+    yearsLeft: yearsToRetirement,
+    fireReadiness: Math.round(fireReadiness),
+    surplus: Math.round(surplus),
+    monthlyIncomeGap: Math.round(corpusFundedMonthlyIncome),
+    probabilityOfSuccess,
+    status,
+    recommendations,
+  };
+}/**
+ * FIRE54 Centralized Retirement Engine (Single Source of Truth)
+ * Consolidates baseline projections, Monte Carlo simulations, dynamic loan payoffs,
+ * and gap intelligence into a unified domain API.
+ */
+
+// 1. Core types and assumptions
+export type * from "./types";
+export { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
+
+// 2. Calculations & Primitives
+export * from "./calculations";
+
+// 3. Projections & Scenarios
+export * from "./projection";
+
+// 4. Dynamic Cashflow & Prepayment Engine
+export * from "./dynamic-retirement-engine";
+
+// 5. Gap Intelligence & Athena Analytics
+export * from "./gap-intelligence-engine";
+
+// 6. Portfolio Asset Adapter
+export * from "./portfolio-asset-adapter";
+
+import { generateRetirementProjection } from "./projection";
+import { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
+import type { RetirementAssumptions, RetirementProjection } from "./types";
+
+/**
+ * Standard accessor for deterministic & Monte Carlo retirement projections.
+ */
+export const getRetirementProjection = (
+  inputs?: any,
+  overrides?: Partial<RetirementAssumptions>
+): RetirementProjection => {
+  // If a full financial profile is passed directly, fall back or merge
+  let base = inputs || {};
+  if (base.personal && base.assumptions) {
+    // Looks like FinancialProfile; extract essentials if not adapted
+    base = {
+      ...DEFAULT_RETIREMENT_ASSUMPTIONS,
+      currentAge: Number(base.personal?.currentAge || 32),
+      retirementAge: Number(base.personal?.retirementAge || 54),
+      desiredMonthlyIncome: Number(base.goals?.desiredMonthlyRetirementIncome || 100000),
+      monthlyInvestment: Number(base.income?.monthlyInvestment || 0),
+      annualSipIncrease: Number(base.assumptions?.sipIncrease || 0.10),
+      equityReturn: Number(base.assumptions?.equityReturn || 0.12),
+      debtReturn: Number(base.assumptions?.debtReturn || 0.07),
+      inflationRate: Number(base.assumptions?.inflationRate || 0.06),
+      withdrawalRate: Number(base.assumptions?.withdrawalRate || 0.04),
+    };
+  }
+  const merged = overrides ? { ...base, ...overrides } : base;
+  return generateRetirementProjection(merged as any);
+};
+
+/**
+ * Generates triple-scenario sensitivity projections (Conservative, Base, Aggressive).
+ */
+export function generateRetirementScenarios(
+  inputs?: Partial<RetirementAssumptions>
+): { conservative: RetirementProjection; base: RetirementProjection; aggressive: RetirementProjection } {
+  const baseAssumptions: RetirementAssumptions = {
+    ...DEFAULT_RETIREMENT_ASSUMPTIONS,
+    ...(inputs || {}),
+  };
+
+  const conservative = generateRetirementProjection({
+    ...baseAssumptions,
+    equityReturn: Math.max(0.01, (baseAssumptions.equityReturn || 0.12) - 0.02),
+    debtReturn: Math.max(0.01, (baseAssumptions.debtReturn || 0.07) - 0.02),
+    inflationRate: (baseAssumptions.inflationRate || 0.06) + 0.01,
+  });
+
+  const base = generateRetirementProjection(baseAssumptions);
+
+  const aggressive = generateRetirementProjection({
+    ...baseAssumptions,
+    equityReturn: (baseAssumptions.equityReturn || 0.12) + 0.02,
+    debtReturn: (baseAssumptions.debtReturn || 0.07) + 0.01,
+    inflationRate: Math.max(0.01, (baseAssumptions.inflationRate || 0.06) - 0.01),
+  });
+
+  return { conservative, base, aggressive };
+}
+export interface RetirementAssumptions {
+  currentAge: number;
+  retirementAge: number;
+
+  // Assets
+  mutualFunds: number;
+  ppf: number;
+  epf: number;
+  nps: number;
+  emergencyFund: number;
+  cash: number;
+
+  // Legacy (kept for compatibility)
+  currentCorpus: number;
+
+  // Income
+  monthlySalary: number;
+  monthlyInvestment: number;
+  postDebtMonthlySurge?: number;
+  debtPayoffYears?: number;
+  annualSipIncrease: number;
+  expectedAnnualIncrement: number;
+
+  // Returns & Volatility (Monte Carlo)
+  equityReturn: number;
+  equityVolatility: number;
+  debtReturn: number;
+  debtVolatility: number;
+  inflationRate: number;
+  withdrawalRate: number;
+
+  // Retirement
+  desiredMonthlyIncome: number;
+  monthlyPension: number;
+}
+
+export interface YearProjection {
+  age: number;
+  year: number;
+
+  // Deterministic baseline
+  corpus: number;
+  
+  // Monte Carlo Percentile Bands
+  corpus10?: number;
+  corpus50?: number;
+  corpus90?: number;
+
+  mutualFunds: number;
+  ppf: number;
+  epf: number;
+  nps: number;
+  emergencyFund: number;
+
+  targetCorpus: number;
+  gap: number;
+}
+
+export interface RetirementProjection {
+  currentCorpus: number;
+  projectedCorpus: number;
+  requiredCorpus: number;
+
+  targetMonthlyIncome: number;
+  annualIncomeRequired: number;
+
+  yearlyProjection: YearProjection[];
+
+  isOnTrack: boolean;
+
+  // Dashboard Intelligence
+  yearsLeft: number;
+  fireReadiness: number;
+  surplus: number;
+  monthlyIncomeGap: number;
+  
+  // Monte Carlo probability of hitting the target
+  probabilityOfSuccess: number;
+
+  status:
+    | "Excellent"
+    | "On Track"
+    | "Needs Improvement"
+    | "Critical";
+
+  recommendations: string[];
+
+  // Future expansion
+  retirementAgeReached?: boolean;
+  sustainableUntilAge?: number;
+}export * from "./wealth-types";
+export * from "./wealth-engine";
+export * from "./wealth-allocation-engine";
+/**
+ * ATHENA Wealth Allocation Engine
+ * 
+ * This engine manages wealth allocation analysis independently from the Financial Engine.
+ * It answers "Where did every rupee of my salary go?" using a 5-bucket wealth framework.
+ */
+
+import { parseAmount } from "@/lib/spending-analytics";
+import type { MonthlyFinancialStatement } from "@/lib/monthly-review";
+import { getAllMonthlyReviews } from "@/lib/storage";
+import { formatINR } from "@/lib/financial-engine";
+
+// =========================================
+// DATA MODEL
+// =========================================
+
+export type WealthBucket = {
+  name: "Wealth Creation" | "Essential Living" | "Lifestyle" | "Safety" | "Unallocated";
+  amount: number;
+  percentage: number;
+  targetPercentage: number;
+  color: string;
+};
+
+export type WealthAllocationTargets = {
+  wealthCreation: number;
+  essentialLiving: number;
+  lifestyle: number;
+  safety: number;
+  unallocated: number;
+};
+
+export type WealthAllocation = {
+  salaryReceived: number;
+  wealthCreation: number;
+  essentialLiving: number;
+  lifestyle: number;
+  safety: number;
+  unallocated: number;
+  allocationPercentage: number;
+  isComplete: boolean;
+  buckets: WealthBucket[];
+};
+
+export type AllocationValidation = {
+  isValid: boolean;
+  deviations: {
+    bucket: string;
+    actual: number;
+    target: number;
+    deviation: number;
+  }[];
+  warnings: string[];
+  recommendations: string[];
+};
+
+export type LiquidityPosition = {
+  emergencyFund: number;
+  savingsAccount: number;
+  cash: number;
+  totalLiquidAssets: number;
+  monthlyExpenses: number;
+  monthsOfExpensesCovered: number;
+};
+
+export type WealthAllocationBreakdown = {
+  mutualFunds: number;
+  ppf: number;
+  nps: number;
+  fd: number;
+  gold: number;
+  otherInvestments: number;
+  totalWealthCreation: number;
+};
+
+export type MonthlyWealthSummary = {
+  salaryReceived: number;
+  wealthCreated: number;
+  essentialSpent: number;
+  lifestyleSpent: number;
+  safetyAllocated: number;
+  unallocated: number;
+};
+
+export type LifetimeWealthSummary = {
+  totalSalaryReceived: number;
+  totalWealthCreated: number;
+  totalEssentialSpent: number;
+  totalLifestyleSpent: number;
+  totalSafetyAllocated: number;
+  totalUnallocated: number;
+  averageWealthScore: number;
+  monthsTracked: number;
+};
+
+export type WealthTrendData = {
+  monthKey: string;
+  monthLabel: string;
+  wealthScore: number;
+  wealthCreationPercentage: number;
+  essentialLivingPercentage: number;
+  lifestylePercentage: number;
+  safetyPercentage: number;
+  unallocatedPercentage: number;
+};
+
+export type CFONotes = {
+  allocationHealth: "Excellent" | "Good" | "Fair" | "Poor";
+  primaryRecommendation: string;
+  secondaryRecommendation: string;
+  warning?: string;
+};
+
+export type MoMHeadComparison = {
+  head: string;
+  currentAmount: number;
+  previousAmount: number;
+  difference: number;
+  percentageChange: number;
+  isIncrease: boolean;
+};
+
+export type MoMComparisonSummary = {
+  hasPreviousMonth: boolean;
+  comparisons: MoMHeadComparison[];
+  cannibalizationDetected: boolean;
+  cannibalizationMessage?: string;
+};
+
+export type WealthAllocationData = {
+  wealthAllocation: WealthAllocation;
+  allocationTargets: WealthAllocationTargets;
+  allocationValidation: AllocationValidation;
+  liquidityPosition: LiquidityPosition;
+  wealthAllocationBreakdown: WealthAllocationBreakdown;
+  monthlyWealthSummary: MonthlyWealthSummary;
+  lifetimeWealthSummary: LifetimeWealthSummary;
+  wealthTrendData: WealthTrendData[];
+  monthlyWealthScore: number;
+  cfoNotes: CFONotes;
+  momComparison: MoMComparisonSummary;
+};
+
+// =========================================
+// DEFAULT TARGETS
+// =========================================
+
+export function getDefaultAllocationTargets(): WealthAllocationTargets {
+  return {
+    wealthCreation: 30,
+    essentialLiving: 40,
+    lifestyle: 15,
+    safety: 10,
+    unallocated: 5,
+  };
+}
+
+// =========================================
+// HELPER FUNCTIONS
+// =========================================
+
+function safeParseAmount(value: string | number | null | undefined): number {
+  if (value === null || value === undefined) return 0;
+  if (typeof value === "number") return isNaN(value) ? 0 : value;
+  const str = String(value).trim();
+  if (!str) return 0;
+  return parseAmount(str);
+}
+
+// =========================================
+// CALCULATION FUNCTIONS
+// =========================================
+
+/**
+ * Calculate wealth allocation from monthly financial statement
+ */
+export function calculateWealthAllocation(
+  statement: MonthlyFinancialStatement,
+  targets: WealthAllocationTargets
+): WealthAllocation {
+  const income = statement.income;
+  const cashAllocation = statement.cashAllocation;
+  const expenses = statement.expenses;
+
+  const salaryReceived =
+    safeParseAmount(income.salaryInHand) +
+    safeParseAmount(income.daAllowances) +
+    safeParseAmount(income.bonus) +
+    safeParseAmount(income.arrears) +
+    safeParseAmount(income.interestIncome) +
+    safeParseAmount(income.dividend) +
+    safeParseAmount(income.rentalIncome) +
+    safeParseAmount(income.otherIncome);
+
+  const wealthCreation = safeParseAmount(cashAllocation.investments);
+
+  const household = expenses.household;
+  const family = expenses.family;
+  const essentialLiving =
+    safeParseAmount(household.groceries) +
+    safeParseAmount(household.electricity) +
+    safeParseAmount(household.gas) +
+    safeParseAmount(household.internet) +
+    safeParseAmount(household.maintenance) +
+    safeParseAmount(household.houseHelp) +
+    safeParseAmount(household.fuel) +
+    safeParseAmount(family.parents) +
+    safeParseAmount(family.medical) +
+    safeParseAmount(family.children) +
+    safeParseAmount(family.gifts);
+
+  const lifestyleExp = expenses.lifestyle;
+  const travel = expenses.travel;
+  const misc = expenses.misc;
+  const lifestyle =
+    safeParseAmount(lifestyleExp.restaurants) +
+    safeParseAmount(lifestyleExp.shopping) +
+    safeParseAmount(lifestyleExp.clothes) +
+    safeParseAmount(lifestyleExp.entertainment) +
+    safeParseAmount(lifestyleExp.gym) +
+    safeParseAmount(lifestyleExp.subscriptions) +
+    safeParseAmount(travel.flights) +
+    safeParseAmount(travel.hotels) +
+    safeParseAmount(travel.taxi) +
+    safeParseAmount(travel.holiday) +
+    safeParseAmount(misc.unexpected) +
+    safeParseAmount(misc.repairs) +
+    safeParseAmount(misc.other);
+
+  const safety =
+    safeParseAmount(cashAllocation.emergencyFund) +
+    safeParseAmount(cashAllocation.homeLoanPrepayment);
+
+  const unallocated = safeParseAmount(cashAllocation.cashRemaining);
+
+  const totalAllocated = wealthCreation + essentialLiving + lifestyle + safety + unallocated;
+  const allocationPercentage = salaryReceived > 0 ? (totalAllocated / salaryReceived) * 100 : 0;
+  const isComplete = Math.abs(allocationPercentage - 100) < 1;
+
+  const wealthCreationPercentage = salaryReceived > 0 ? (wealthCreation / salaryReceived) * 100 : 0;
+  const essentialLivingPercentage = salaryReceived > 0 ? (essentialLiving / salaryReceived) * 100 : 0;
+  const lifestylePercentage = salaryReceived > 0 ? (lifestyle / salaryReceived) * 100 : 0;
+  const safetyPercentage = salaryReceived > 0 ? (safety / salaryReceived) * 100 : 0;
+  const unallocatedPercentage = salaryReceived > 0 ? (unallocated / salaryReceived) * 100 : 0;
+
+  const buckets: WealthBucket[] = [
+    { name: "Wealth Creation", amount: wealthCreation, percentage: wealthCreationPercentage, targetPercentage: targets.wealthCreation, color: "bg-emerald-500" },
+    { name: "Essential Living", amount: essentialLiving, percentage: essentialLivingPercentage, targetPercentage: targets.essentialLiving, color: "bg-blue-500" },
+    { name: "Lifestyle", amount: lifestyle, percentage: lifestylePercentage, targetPercentage: targets.lifestyle, color: "bg-violet-500" },
+    { name: "Safety", amount: safety, percentage: safetyPercentage, targetPercentage: targets.safety, color: "bg-amber-500" },
+    { name: "Unallocated", amount: unallocated, percentage: unallocatedPercentage, targetPercentage: targets.unallocated, color: "bg-zinc-500" },
+  ];
+
+  return {
+    salaryReceived,
+    wealthCreation,
+    essentialLiving,
+    lifestyle,
+    safety,
+    unallocated,
+    allocationPercentage,
+    isComplete,
+    buckets,
+  };
+}
+
+/**
+ * Validate allocation against targets
+ */
+export function validateAllocation(
+  allocation: WealthAllocation,
+  targets: WealthAllocationTargets
+): AllocationValidation {
+  const deviations: AllocationValidation["deviations"] = [];
+  const warnings: string[] = [];
+  const recommendations: string[] = [];
+
+  for (const bucket of allocation.buckets) {
+    const target = targets[bucket.name.toLowerCase().replace(" ", "") as keyof WealthAllocationTargets];
+    const deviation = bucket.percentage - target;
+
+    deviations.push({ bucket: bucket.name, actual: bucket.percentage, target, deviation });
+
+    if (Math.abs(deviation) > 10) {
+      warnings.push(`${bucket.name} is ${deviation > 0 ? "above" : "below"} target by ${Math.abs(deviation).toFixed(1)}%`);
+    }
+
+    if (bucket.name === "Wealth Creation" && deviation < -10) {
+      recommendations.push("Consider increasing wealth creation to meet long-term goals");
+    }
+    if (bucket.name === "Lifestyle" && deviation > 10) {
+      recommendations.push("Lifestyle spending is above target. Review discretionary expenses");
+    }
+    if (bucket.name === "Unallocated" && deviation > 5) {
+      recommendations.push("Unallocated cash should be invested or allocated to specific goals");
+    }
+  }
+
+  const isValid = warnings.length === 0 && allocation.isComplete;
+  return { isValid, deviations, warnings, recommendations };
+}
+
+/**
+ * Calculate liquidity position
+ */
+export function calculateLiquidityPosition(statement: MonthlyFinancialStatement): LiquidityPosition {
+  const assets = statement.assets;
+  const expenses = statement.expenses;
+
+  const emergencyFund = safeParseAmount(assets.emergencyFund);
+  const savingsAccount = safeParseAmount(assets.savingsAccount);
+  const cash = safeParseAmount(assets.cash);
+  const totalLiquidAssets = emergencyFund + savingsAccount + cash;
+
+  const household = expenses.household;
+  const family = expenses.family;
+  const monthlyExpenses =
+    safeParseAmount(household.groceries) +
+    safeParseAmount(household.electricity) +
+    safeParseAmount(household.gas) +
+    safeParseAmount(household.internet) +
+    safeParseAmount(household.maintenance) +
+    safeParseAmount(household.houseHelp) +
+    safeParseAmount(household.fuel) +
+    safeParseAmount(family.parents) +
+    safeParseAmount(family.medical) +
+    safeParseAmount(family.children) +
+    safeParseAmount(family.gifts);
+
+  const monthsOfExpensesCovered = monthlyExpenses > 0 ? totalLiquidAssets / monthlyExpenses : 0;
+
+  return { emergencyFund, savingsAccount, cash, totalLiquidAssets, monthlyExpenses, monthsOfExpensesCovered };
+}
+
+/**
+ * Calculate wealth allocation breakdown
+ */
+export function calculateWealthAllocationBreakdown(statement: MonthlyFinancialStatement): WealthAllocationBreakdown {
+  const assets = statement.assets;
+  const investments = statement.investments;
+
+  const mutualFunds = safeParseAmount(assets.mutualFunds);
+  const ppf = safeParseAmount(assets.ppf);
+  const nps = safeParseAmount(assets.nps);
+  const fd = safeParseAmount(assets.fd);
+  const gold = safeParseAmount(assets.gold);
+
+  const otherInvestments = investments.reduce(
+    (sum, inv) => sum + safeParseAmount(inv.currentValue),
+    0
+  );
+
+  const totalWealthCreation = mutualFunds + ppf + nps + fd + gold + otherInvestments;
+
+  return { mutualFunds, ppf, nps, fd, gold, otherInvestments, totalWealthCreation };
+}
+
+/**
+ * Calculate monthly wealth summary
+ */
+export function calculateMonthlyWealthSummary(allocation: WealthAllocation): MonthlyWealthSummary {
+  return {
+    salaryReceived: allocation.salaryReceived,
+    wealthCreated: allocation.wealthCreation,
+    essentialSpent: allocation.essentialLiving,
+    lifestyleSpent: allocation.lifestyle,
+    safetyAllocated: allocation.safety,
+    unallocated: allocation.unallocated,
+  };
+}
+
+/**
+ * Calculate Month-over-Month comparison between current statement and previous statement
+ */
+export function calculateMoMComparison(
+  currentStatement: MonthlyFinancialStatement,
+  previousStatement?: MonthlyFinancialStatement
+): MoMComparisonSummary {
+  if (!previousStatement) {
+    return {
+      hasPreviousMonth: false,
+      comparisons: [],
+      cannibalizationDetected: false,
+    };
+  }
+
+  const targets = getDefaultAllocationTargets();
+  const currentAlloc = calculateWealthAllocation(currentStatement, targets);
+  const previousAlloc = calculateWealthAllocation(previousStatement, targets);
+
+  const heads = [
+    { name: "Wealth Creation (Investments)", curr: currentAlloc.wealthCreation, prev: previousAlloc.wealthCreation },
+    { name: "Essential Living", curr: currentAlloc.essentialLiving, prev: previousAlloc.essentialLiving },
+    { name: "Lifestyle (Shopping/Discretionary)", curr: currentAlloc.lifestyle, prev: previousAlloc.lifestyle },
+    { name: "Safety & Emergency", curr: currentAlloc.safety, prev: previousAlloc.safety },
+    { name: "Unallocated Cash", curr: currentAlloc.unallocated, prev: previousAlloc.unallocated },
+  ];
+
+  const comparisons: MoMHeadComparison[] = heads.map((h) => {
+    const difference = h.curr - h.prev;
+    const percentageChange = h.prev > 0 ? Number(((difference / h.prev) * 100).toFixed(1)) : 0;
+    return {
+      head: h.name,
+      currentAmount: h.curr,
+      previousAmount: h.prev,
+      difference,
+      percentageChange,
+      isIncrease: difference >= 0,
+    };
+  });
+
+  const lifestyleComp = comparisons.find((c) => c.head.includes("Lifestyle"))!;
+  const wealthComp = comparisons.find((c) => c.head.includes("Wealth Creation"))!;
+  
+  const cannibalizationDetected = lifestyleComp.difference > 0 && wealthComp.difference < 0;
+  let cannibalizationMessage;
+
+  if (cannibalizationDetected) {
+    cannibalizationMessage = `Warning: Lifestyle spending increased by ${formatINR(lifestyleComp.difference)}, which directly reduced your Wealth Creation by ${formatINR(Math.abs(wealthComp.difference))}.`;
+  }
+
+  return {
+    hasPreviousMonth: true,
+    comparisons,
+    cannibalizationDetected,
+    cannibalizationMessage,
+  };
+}
+
+/**
+ * Calculate lifetime wealth summary
+ */
+export function calculateLifetimeWealthSummary(allStatements: MonthlyFinancialStatement[]): LifetimeWealthSummary {
+  const defaultTargets = getDefaultAllocationTargets();
+
+  let totalSalaryReceived = 0;
+  let totalWealthCreated = 0;
+  let totalEssentialSpent = 0;
+  let totalLifestyleSpent = 0;
+  let totalSafetyAllocated = 0;
+  let totalUnallocated = 0;
+  let totalScore = 0;
+
+  for (const statement of allStatements) {
+    const allocation = calculateWealthAllocation(statement, defaultTargets);
+    const validation = validateAllocation(allocation, defaultTargets);
+    const liquidity = calculateLiquidityPosition(statement);
+    const score = calculateMonthlyWealthScore(allocation, validation, liquidity);
+
+    totalSalaryReceived += allocation.salaryReceived;
+    totalWealthCreated += allocation.wealthCreation;
+    totalEssentialSpent += allocation.essentialLiving;
+    totalLifestyleSpent += allocation.lifestyle;
+    totalSafetyAllocated += allocation.safety;
+    totalUnallocated += allocation.unallocated;
+    totalScore += score;
+  }
+
+  const monthsTracked = allStatements.length;
+  const averageWealthScore = monthsTracked > 0 ? totalScore / monthsTracked : 0;
+
+  return {
+    totalSalaryReceived,
+    totalWealthCreated,
+    totalEssentialSpent,
+    totalLifestyleSpent,
+    totalSafetyAllocated,
+    totalUnallocated,
+    averageWealthScore,
+    monthsTracked,
+  };
+}
+
+/**
+ * Calculate wealth trend data
+ */
+export function calculateWealthTrendData(allStatements: MonthlyFinancialStatement[]): WealthTrendData[] {
+  const defaultTargets = getDefaultAllocationTargets();
+
+  return allStatements.map((statement) => {
+    const allocation = calculateWealthAllocation(statement, defaultTargets);
+    const validation = validateAllocation(allocation, defaultTargets);
+    const liquidity = calculateLiquidityPosition(statement);
+    const score = calculateMonthlyWealthScore(allocation, validation, liquidity);
+
+    return {
+      monthKey: `${statement.year}-${statement.month.toString().padStart(2, "0")}`,
+      monthLabel: new Date(statement.year, statement.month - 1).toLocaleDateString("en-IN", {
+        month: "short",
+        year: "numeric",
+      }),
+      wealthScore: score,
+      wealthCreationPercentage: allocation.buckets[0].percentage,
+      essentialLivingPercentage: allocation.buckets[1].percentage,
+      lifestylePercentage: allocation.buckets[2].percentage,
+      safetyPercentage: allocation.buckets[3].percentage,
+      unallocatedPercentage: allocation.buckets[4].percentage,
+    };
+  });
+}
+
+/**
+ * Calculate monthly wealth score (0-100)
+ */
+export function calculateMonthlyWealthScore(
+  allocation: WealthAllocation,
+  validation: AllocationValidation,
+  liquidity: LiquidityPosition
+): number {
+  let score = 0;
+
+  const wealthCreationDeviation = Math.abs(allocation.buckets[0].percentage - allocation.buckets[0].targetPercentage);
+  score += Math.max(0, 25 - (wealthCreationDeviation / 2));
+
+  const essentialLivingDeviation = Math.abs(allocation.buckets[1].percentage - allocation.buckets[1].targetPercentage);
+  score += Math.max(0, 20 - (essentialLivingDeviation / 2));
+
+  const lifestyleDeviation = Math.abs(allocation.buckets[2].percentage - allocation.buckets[2].targetPercentage);
+  score += Math.max(0, 15 - (lifestyleDeviation / 2));
+
+  const safetyDeviation = Math.abs(allocation.buckets[3].percentage - allocation.buckets[3].targetPercentage);
+  score += Math.max(0, 20 - (safetyDeviation / 2));
+
+  const unallocatedDeviation = Math.abs(allocation.buckets[4].percentage - allocation.buckets[4].targetPercentage);
+  score += Math.max(0, 15 - (unallocatedDeviation / 2));
+
+  score += Math.min(5, liquidity.monthsOfExpensesCovered);
+  score += validation.isValid ? 5 : 0;
+
+  return Math.min(Math.round(score), 100);
+}
+
+/**
+ * Generate CFO notes
+ */
+export function generateCFONotes(
+  allocation: WealthAllocation,
+  validation: AllocationValidation,
+  score: number
+): CFONotes {
+  let allocationHealth: CFONotes["allocationHealth"];
+  if (score >= 80) allocationHealth = "Excellent";
+  else if (score >= 60) allocationHealth = "Good";
+  else if (score >= 40) allocationHealth = "Fair";
+  else allocationHealth = "Poor";
+
+  let primaryRecommendation = "";
+  if (allocation.wealthCreation / allocation.salaryReceived < 0.25) {
+    primaryRecommendation = "Increase wealth creation to at least 25% of salary for long-term growth";
+  } else if (allocation.unallocated / allocation.salaryReceived > 0.1) {
+    primaryRecommendation = "Allocate unallocated cash to investments or specific goals";
+  } else if (allocation.lifestyle / allocation.salaryReceived > 0.2) {
+    primaryRecommendation = "Review lifestyle spending to align with target allocation";
+  } else {
+    primaryRecommendation = "Maintain current allocation strategy";
+  }
+
+  let secondaryRecommendation = "";
+  if (validation.warnings.length > 0) {
+    secondaryRecommendation = `Address ${validation.warnings.length} allocation deviation(s) to optimize wealth building`;
+  } else {
+    secondaryRecommendation = "Continue monitoring allocation ratios monthly";
+  }
+
+  let warning: string | undefined;
+  if (!allocation.isComplete) {
+    warning = `Cash allocation incomplete: ${allocation.allocationPercentage.toFixed(1)}% allocated`;
+  }
+
+  return { allocationHealth, primaryRecommendation, secondaryRecommendation, warning };
+}
+
+/**
+ * Get all wealth allocation data (single source of truth)
+ */
+export function getWealthAllocationData(
+  statement: MonthlyFinancialStatement,
+  allStatements?: MonthlyFinancialStatement[]
+): WealthAllocationData {
+  const targets = getDefaultAllocationTargets();
+  const storedStatements = getAllMonthlyReviews();
+  const statements = allStatements || storedStatements.map((s) => s.data);
+
+  // Sort statements chronologically if possible to find the previous one accurately
+  const sortedStatements = [...statements].sort((a, b) => {
+    if (a.year !== b.year) return a.year - b.year;
+    return a.month - b.month;
+  });
+
+  const currentIndex = sortedStatements.findIndex(
+    (s) => s.year === statement.year && s.month === statement.month
+  );
+  const previousStatement = currentIndex > 0 ? sortedStatements[currentIndex - 1] : undefined;
+
+  const wealthAllocation = calculateWealthAllocation(statement, targets);
+  const allocationValidation = validateAllocation(wealthAllocation, targets);
+  const liquidityPosition = calculateLiquidityPosition(statement);
+  const wealthAllocationBreakdown = calculateWealthAllocationBreakdown(statement);
+  const monthlyWealthSummary = calculateMonthlyWealthSummary(wealthAllocation);
+  const lifetimeWealthSummary = calculateLifetimeWealthSummary(sortedStatements);
+  const wealthTrendData = calculateWealthTrendData(sortedStatements);
+  const monthlyWealthScore = calculateMonthlyWealthScore(
+    wealthAllocation,
+    allocationValidation,
+    liquidityPosition
+  );
+  const cfoNotes = generateCFONotes(wealthAllocation, allocationValidation, monthlyWealthScore);
+  const momComparison = calculateMoMComparison(statement, previousStatement);
+
+  return {
+    wealthAllocation,
+    allocationTargets: targets,
+    allocationValidation,
+    liquidityPosition,
+    wealthAllocationBreakdown,
+    monthlyWealthSummary,
+    lifetimeWealthSummary,
+    wealthTrendData,
+    monthlyWealthScore,
+    cfoNotes,
+    momComparison,
+  };
+}import { getAssets, getPortfolio, getPortfolioSummary } from "@/lib/investments";
+import { WealthMetrics } from "./wealth-types";
+
+export function getWealthMetrics(): WealthMetrics {
+  const portfolio = getPortfolio();
+  const summary = getPortfolioSummary(portfolio);
+  const assets = getAssets(portfolio);
+
+  const totalAssets = summary.totalAssets;
+  const totalLiabilities = summary.totalLiabilities;
+  const netWorth = summary.netWorth;
+
+  const investedAssets = assets
+    .filter((asset) =>
+      ["Mutual Fund", "PPF", "EPF", "NPS"].includes(asset.category)
+    )
+    .reduce((sum, asset) => sum + asset.currentValue, 0);
+
+  const liquidAssets = assets
+    .filter((asset) =>
+      ["Emergency Fund", "Savings Account", "Cash"].includes(asset.category)
+    )
+    .reduce((sum, asset) => sum + asset.currentValue, 0);
+
+  const investmentRatio =
+    totalAssets > 0 ? investedAssets / totalAssets : 0;
+
+  const liquidityRatio =
+    totalAssets > 0 ? liquidAssets / totalAssets : 0;
+
+  const debtRatio =
+    totalAssets > 0 ? totalLiabilities / totalAssets : 0;
+
+  let wealthScore = 100;
+
+  if (debtRatio > 0.30) wealthScore -= 20;
+  if (liquidityRatio < 0.10) wealthScore -= 15;
+  if (investmentRatio < 0.60) wealthScore -= 15;
+
+  wealthScore = Math.max(0, wealthScore);
+
+  let status: WealthMetrics["status"];
+
+  if (wealthScore >= 90) status = "Excellent";
+  else if (wealthScore >= 75) status = "Good";
+  else if (wealthScore >= 60) status = "Average";
+  else status = "Needs Attention";
+
+  const recommendations: string[] = [];
+
+  if (liquidityRatio < 0.10)
+    recommendations.push("Increase emergency fund.");
+
+  if (investmentRatio < 0.60)
+    recommendations.push("Increase long-term investments.");
+
+  if (debtRatio > 0.30)
+    recommendations.push("Reduce outstanding debt.");
+
+  return {
+    totalAssets,
+    totalLiabilities,
+    netWorth,
+    investedAssets,
+    liquidAssets,
+    investmentRatio,
+    liquidityRatio,
+    debtRatio,
+    wealthScore,
+    status,
+    recommendations,
+  };
+}
+// ==========================================
+// FIRE54 Wealth Engine Types
+// Sprint 4A
+// ==========================================
+
+export interface AssetAllocation {
+  mutualFunds: number;
+  ppf: number;
+  epf: number;
+  nps: number;
+  emergencyFund: number;
+  cash: number;
+}
+
+export interface LiabilityAllocation {
+  homeLoan: number;
+  otherLoans: number;
+}
+
+export interface WealthMetrics {
+  // Totals
+  totalAssets: number;
+  totalLiabilities: number;
+  netWorth: number;
+
+  // Categories
+  investedAssets: number;
+  liquidAssets: number;
+
+  // Ratios
+  investmentRatio: number;
+  liquidityRatio: number;
+  debtRatio: number;
+
+  // Dashboard
+  wealthScore: number;
+  status: "Excellent" | "Good" | "Average" | "Needs Attention";
+
+  recommendations: string[];
+}

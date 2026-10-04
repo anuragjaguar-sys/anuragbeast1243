@@ -30,13 +30,32 @@ function clampFiniteNumber(value: number, fallback = 0): number {
 }
 
 function getPortfolioRetirementCorpus(portfolio = getPortfolio()): number {
-  const retirementCategories = new Set(["Mutual Fund", "PPF", "EPF", "NPS"]);
+  const retirementCategories = new Set([
+    "mutual fund",
+    "ppf",
+    "epf",
+    "nps",
+    "stocks",
+    "equity",
+    "shares",
+    "etf",
+  ]);
 
   return portfolio
-    .filter(
-      (item) =>
-        item.type === "Asset" && retirementCategories.has(item.category)
-    )
+    .filter((item) => {
+      if (item.type !== "Asset") return false;
+      const cat = (item.category || "").toLowerCase().trim();
+      const name = (item.name || "").toLowerCase().trim();
+      return (
+        retirementCategories.has(cat) ||
+        name.includes("mutual fund") ||
+        name.includes("stock") ||
+        name.includes("shares") ||
+        name.includes("ppf") ||
+        name.includes("epf") ||
+        name.includes("nps")
+      );
+    })
     .reduce((sum, item) => sum + clampFiniteNumber(item.currentValue, 0), 0);
 }
 
@@ -51,36 +70,20 @@ function calculateRequiredMonthlyInvestment(
   const yearsRemaining = Math.max(0, clampFiniteNumber(yearsLeft, 0));
   const annualReturn = Math.max(0, clampFiniteNumber(expectedAnnualReturn, 0));
 
-  if (targetCorpus <= 0) {
-    return 0;
-  }
-
-  if (yearsRemaining <= 0) {
-    return Math.max(0, targetCorpus - corpusNow);
-  }
+  if (targetCorpus <= 0) return 0;
+  if (yearsRemaining <= 0) return Math.max(0, targetCorpus - corpusNow);
 
   const monthlyRate = annualReturn / 12;
   const periods = yearsRemaining * 12;
 
-  const futureValueOfCurrentCorpus =
-    corpusNow * Math.pow(1 + monthlyRate, periods);
-
+  const futureValueOfCurrentCorpus = corpusNow * Math.pow(1 + monthlyRate, periods);
   const amountStillNeeded = Math.max(0, targetCorpus - futureValueOfCurrentCorpus);
 
-  if (amountStillNeeded <= 0) {
-    return 0;
-  }
+  if (amountStillNeeded <= 0) return 0;
+  if (monthlyRate === 0) return amountStillNeeded / periods;
 
-  if (monthlyRate === 0) {
-    return amountStillNeeded / periods;
-  }
-
-  const annuityFactor =
-    (Math.pow(1 + monthlyRate, periods) - 1) / monthlyRate;
-
-  if (annuityFactor <= 0) {
-    return amountStillNeeded / Math.max(1, periods);
-  }
+  const annuityFactor = (Math.pow(1 + monthlyRate, periods) - 1) / monthlyRate;
+  if (annuityFactor <= 0) return amountStillNeeded / Math.max(1, periods);
 
   return amountStillNeeded / annuityFactor;
 }
@@ -95,7 +98,7 @@ export function getRetirementGapAnalysis(
   };
 
   const portfolio = getPortfolio();
- const projection = generateRetirementProjection(assumptions);
+  const projection = generateRetirementProjection(assumptions);
 
   const currentCorpus =
     clampFiniteNumber(projection.currentCorpus, 0) ||

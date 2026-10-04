@@ -1,32 +1,24 @@
 export interface DynamicRetirementInputs {
   currentAge: number;
   retirementAge: number;
-  
-  // Current Asset Portfolio
   currentMutualFunds: number;
   currentStocks: number;
   currentPPF: number;
   currentEPF: number;
   currentNPS: number;
-  currentProperty: number; // Flat value (e.g. ₹45 Lakh)
-
-  // Phase 1 Cash Flow
+  currentProperty: number;
   activeMonthlySIP: number;
-  stepUpPercent: number; // 0, 5, 10, 15
-
-  // Loan Parameters
+  stepUpPercent: number;
   loanPrincipal: number;
-  actualMonthlyEMI: number; // ₹18,250
-  loanInterestRate: number; // 8.5%
+  actualMonthlyEMI: number;
+  loanInterestRate: number;
   loanTenureMonths?: number;
   monthlyPrepayment: number;
-
-  // Compounding Rates
-  equityReturnRate?: number;    // 12%
-  ppfReturnRate?: number;       // 7.1%
-  epfReturnRate?: number;       // 8.15%
-  npsReturnRate?: number;       // 9.5%
-  propertyReturnRate?: number;  // 5.0%
+  equityReturnRate?: number;
+  ppfReturnRate?: number;
+  epfReturnRate?: number;
+  npsReturnRate?: number;
+  propertyReturnRate?: number;
 }
 
 export interface AssetBreakdownAt54 {
@@ -36,15 +28,15 @@ export interface AssetBreakdownAt54 {
   epfValue: number;
   npsValue: number;
   propertyValue: number;
-  liquidCorpus: number; // MF + Stocks + PPF + EPF + NPS
-  totalNetWorth: number; // Liquid Corpus + Property
+  liquidCorpus: number;
+  totalNetWorth: number;
 }
 
 export interface DynamicRetirementResult {
   debtFreeMonths: number;
   debtFreeAge: number;
   baseEMI: number;
-  liberatedCashflowAtPayoff: number; // Prepayment + EMI
+  liberatedCashflowAtPayoff: number;
   projectedCorpusAtRetirement: number;
   assetBreakdown: AssetBreakdownAt54;
   yearlyBreakdown: {
@@ -107,8 +99,8 @@ export function calculateDynamicRetirementCorpus(
     if (loanBalance > 1) {
       isLoanActive = true;
       const interest = loanBalance * loanMonthlyRate;
-      const regularPrincipal = Math.min(loanBalance, baseEMI - interest);
-      const prepay = Math.min(loanBalance - regularPrincipal, monthlyPrepayment);
+      const regularPrincipal = Math.max(0, Math.min(loanBalance, baseEMI - interest));
+      const prepay = Math.max(0, Math.min(loanBalance - regularPrincipal, monthlyPrepayment));
       loanBalance = Math.max(0, loanBalance - (regularPrincipal + prepay));
 
       if (loanBalance <= 1 && debtFreeMonthIndex === -1) {
@@ -121,7 +113,8 @@ export function calculateDynamicRetirementCorpus(
       effectiveMonthlySIP += (baseEMI + monthlyPrepayment);
     }
 
-    equityCorpus = (equityCorpus + effectiveMonthlySIP) * (1 + monthlyEquityRate);
+    // Mid-month convention for newly added SIP capital
+    equityCorpus = equityCorpus * (1 + monthlyEquityRate) + effectiveMonthlySIP * (1 + monthlyEquityRate / 2);
 
     if (m % 12 === 0 || m === totalMonths) {
       const yearIndex = Math.ceil(m / 12);
@@ -140,7 +133,6 @@ export function calculateDynamicRetirementCorpus(
   const debtFreeMonths = debtFreeMonthIndex > 0 ? debtFreeMonthIndex : 23;
   const debtFreeAge = Number((currentAge + debtFreeMonths / 12).toFixed(1));
 
-  // Asset Future Value Calculations at Age 54
   const directStocksAt54 = Math.round(currentStocks * Math.pow(1 + equityReturnRate / 100, totalYears));
   const ppfAt54 = Math.round(currentPPF * Math.pow(1 + ppfReturnRate / 100, totalYears));
   const epfAt54 = Math.round(currentEPF * Math.pow(1 + epfReturnRate / 100, totalYears));

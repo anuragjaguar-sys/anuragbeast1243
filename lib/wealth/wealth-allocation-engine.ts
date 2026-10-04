@@ -198,6 +198,7 @@ export function calculateWealthAllocation(
   const family = expenses.family;
   const essentialLiving =
     safeParseAmount(household.groceries) +
+    safeParseAmount(household.messBill ?? "") +
     safeParseAmount(household.electricity) +
     safeParseAmount(household.gas) +
     safeParseAmount(household.internet) +
@@ -316,6 +317,7 @@ export function calculateLiquidityPosition(statement: MonthlyFinancialStatement)
   const family = expenses.family;
   const monthlyExpenses =
     safeParseAmount(household.groceries) +
+    safeParseAmount(household.messBill ?? "") +
     safeParseAmount(household.electricity) +
     safeParseAmount(household.gas) +
     safeParseAmount(household.internet) +

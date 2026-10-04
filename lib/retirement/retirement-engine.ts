@@ -8,7 +8,7 @@
 export type * from "./types";
 export { DEFAULT_RETIREMENT_ASSUMPTIONS } from "./assumptions";
 
-// 2. Calculations & Primitives
+// 2. Calculations, Primitives & LTCG Tax Engine
 export * from "./calculations";
 
 // 3. Projections & Scenarios
@@ -34,10 +34,8 @@ export const getRetirementProjection = (
   inputs?: any,
   overrides?: Partial<RetirementAssumptions>
 ): RetirementProjection => {
-  // If a full financial profile is passed directly, fall back or merge
   let base = inputs || {};
   if (base.personal && base.assumptions) {
-    // Looks like FinancialProfile; extract essentials if not adapted
     base = {
       ...DEFAULT_RETIREMENT_ASSUMPTIONS,
       currentAge: Number(base.personal?.currentAge || 32),

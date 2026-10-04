@@ -6,6 +6,13 @@ export interface SyncPayload<T = unknown> {
   updatedAt: number;
 }
 
+const REMOTE_STORE_KEYS: Record<string, string> = {
+  portfolio: StorageManager.KEYS.PORTFOLIO,
+  goals: StorageManager.KEYS.GOALS,
+  goalLedger: StorageManager.KEYS.GOAL_LEDGER,
+  behaviourProfile: StorageManager.KEYS.BEHAVIOUR_PROFILE,
+};
+
 export class CloudSyncService {
   private static async getUserId(): Promise<string | null> {
     try {
@@ -37,7 +44,14 @@ export class CloudSyncService {
         },
         { onConflict: "user_id,store_key" }
       );
-      return !error;
+      const wasSaved = !error;
+
+      if (wasSaved) {
+        const localStoreKey = REMOTE_STORE_KEYS[storeKey] ?? storeKey;
+        StorageManager.set(`${localStoreKey}_sync_meta`, payload);
+      }
+
+      return wasSaved;
     } catch (err) {
       console.error(`[CloudSync] Failed to push store ${storeKey}:`, err);
       return false;
@@ -49,36 +63,19 @@ export class CloudSyncService {
     if (!userId) return false;
 
     try {
-      const query = supabase.from("user_sync_data").select("data, store_key, payload").eq("user_id", userId);
-      
-      let res: any;
-      if (query && typeof (query as any).maybeSingle === "function") {
-        res = await (query as any).maybeSingle();
-      } else {
-        res = await query;
-      }
+      const { data: rows, error } = await supabase
+        .from("user_sync_data")
+        .select("data, store_key, payload")
+        .eq("user_id", userId);
 
-      if (res?.error) return false;
-
-      // Case 1: Monolithic mock object { data: { data: { goals: [...], portfolio: [...] } } }
-      const payloadData = res?.data?.data ?? res?.data;
-      if (payloadData && typeof payloadData === "object" && !Array.isArray(payloadData) && !("store_key" in payloadData)) {
-        for (const [key, val] of Object.entries(payloadData)) {
-          // Check if key corresponds to a StorageManager.KEYS property (e.g. goals -> StorageManager.KEYS.GOALS)
-          const uppercaseKey = key.toUpperCase() as keyof typeof StorageManager.KEYS;
-          const targetKey = StorageManager.KEYS[uppercaseKey] ?? key;
-          StorageManager.set(targetKey, val);
-          StorageManager.set(key, val);
-        }
-        return true;
-      }
-
-      // Case 2: Multi-row or array response
-      const rows = Array.isArray(res?.data) ? res.data : (res?.data ? [res.data] : []);
-      if (!rows.length) return false;
+      if (error || !Array.isArray(rows)) return false;
 
       for (const row of rows) {
         if (!row) continue;
+
+        const localStoreKey = REMOTE_STORE_KEYS[row.store_key];
+        if (!localStoreKey) continue;
+
         const rawPayload = row.payload ?? row.data;
         if (!rawPayload) continue;
 
@@ -91,9 +88,9 @@ export class CloudSyncService {
         const remoteData = isEnvelope ? rawPayload.data : rawPayload;
         const remoteUpdatedAt = isEnvelope ? rawPayload.updatedAt : Date.now();
 
-        const localData = StorageManager.get(row.store_key, null);
+        const localData = StorageManager.get(localStoreKey, null);
         const localEnvelope = StorageManager.get<SyncPayload | null>(
-          `${row.store_key}_sync_meta`,
+          `${localStoreKey}_sync_meta`,
           null as unknown as SyncPayload
         );
 
@@ -102,9 +99,9 @@ export class CloudSyncService {
           !localEnvelope?.updatedAt ||
           remoteUpdatedAt >= localEnvelope.updatedAt;
 
-        if (shouldApply && row.store_key) {
-          StorageManager.set(row.store_key, remoteData);
-          StorageManager.set(`${row.store_key}_sync_meta`, {
+        if (shouldApply) {
+          StorageManager.set(localStoreKey, remoteData);
+          StorageManager.set(`${localStoreKey}_sync_meta`, {
             data: remoteData,
             updatedAt: remoteUpdatedAt,
           });

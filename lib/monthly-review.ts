@@ -30,6 +30,7 @@ export type ExpenseCategory =
 export type ExpenseCategories = {
   household: {
     groceries: string;
+    messBill?: string;
     electricity: string;
     gas: string;
     internet: string;
@@ -492,6 +493,7 @@ export const INITIAL_MONTHLY_FINANCIAL_STATEMENT: MonthlyFinancialStatement =
     expenses: {
       household: {
         groceries: "",
+        messBill: "",
         electricity: "",
         gas: "",
         internet: "",

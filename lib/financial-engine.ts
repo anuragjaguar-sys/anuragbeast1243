@@ -370,6 +370,7 @@ export function calculateTotalExpenses(
 
   return (
     safeParseAmount(household.groceries) +
+    safeParseAmount(household.messBill ?? "") +
     safeParseAmount(household.electricity) +
     safeParseAmount(household.gas) +
     safeParseAmount(household.internet) +
@@ -722,7 +723,7 @@ export function formatINR(amount: number): string {
   }
 
   if (amount >= 100_000) {
-    return `₹${(amount / 100_000).toFixed(1)}L`;
+    return `₹${(amount / 100_000).toFixed(2)}L`;
   }
 
   if (amount >= 1_000) {

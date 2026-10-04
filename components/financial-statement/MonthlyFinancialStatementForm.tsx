@@ -25,6 +25,7 @@ import {
   calculateCashAllocation,
   formatINR,
 } from "@/lib/financial-engine";
+import { parseAmount } from "@/lib/spending-analytics";
 
 import {
   loadGoals,
@@ -32,23 +33,38 @@ import {
   saveGoalLedger,
   type Goal,
 } from "@/lib/goals";
+import { loadPortfolio } from "@/lib/investments/portfolio-storage/storage";
+import type { PortfolioItem } from "@/lib/investments";
 
 function CurrencyInput({
   label,
   value,
   onChange,
+  onShowHistory,
   placeholder = "0",
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  onShowHistory?: () => void;
   placeholder?: string;
 }) {
   return (
-    <label className="block">
-      <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
-        {label}
-      </span>
+    <div>
+      {onShowHistory ? (
+        <button
+          type="button"
+          onClick={onShowHistory}
+          aria-label={`View past ${label} expenses`}
+          className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase transition-colors hover:text-rose-300 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400"
+        >
+          {label}
+        </button>
+      ) : (
+        <span className="mb-2 block font-mono text-[11px] tracking-wider text-zinc-500 uppercase">
+          {label}
+        </span>
+      )}
       <div className="relative">
         <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-mono text-sm text-zinc-500">
           ₹
@@ -56,13 +72,14 @@ function CurrencyInput({
         <input
           type="text"
           inputMode="decimal"
+          aria-label={label}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 py-3 pl-9 pr-4 font-mono text-sm text-white placeholder:text-zinc-600 transition-colors focus:border-blue-500/40 focus:bg-zinc-900/80 focus:outline-none focus:ring-1 focus:ring-blue-500/20"
         />
       </div>
-    </label>
+    </div>
   );
 }
 
@@ -163,7 +180,39 @@ export default function MonthlyFinancialStatementForm() {
 
   const [showNotification, setShowNotification] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [accountReview, setAccountReview] = useState<{
+    previousMonthLabel: string | null;
+    previousRunningBalance: string;
+    previousEmergencyBalance: string;
+    currentRunningBalance: number | null;
+    currentEmergencyBalance: number | null;
+  } | null>(null);
+  const [accountReviewReady, setAccountReviewReady] = useState(false);
+  const [accountStatus, setAccountStatus] = useState<"unchanged" | "updated" | null>(null);
+  const [postSaveSummary, setPostSaveSummary] = useState<{
+    monthLabel: string;
+    portfolio: PortfolioItem[];
+    topExpenses: { label: string; amount: number }[];
+  } | null>(null);
+  const [expenseHistory, setExpenseHistory] = useState<{
+    label: string;
+    entries: { monthKey: string; monthLabel: string; amount: string }[];
+  } | null>(null);
   const [goals] = useState<Goal[]>(loadGoals());
+
+  function showExpenseHistory(
+    label: string,
+    getAmount: (statement: MonthlyFinancialStatement) => string | undefined
+  ) {
+    setExpenseHistory({
+      label,
+      entries: getAllMonthlyReviews().map((entry) => ({
+        monthKey: entry.monthKey,
+        monthLabel: entry.monthLabel,
+        amount: getAmount(entry.data) ?? "",
+      })),
+    });
+  }
 
   function getJanuarySipPlan(year: number): string {
     return (
@@ -238,6 +287,17 @@ export default function MonthlyFinancialStatementForm() {
     // Initial check for current form month/year on load
     const initialMonthKey = `${form.year}-${String(form.month).padStart(2, "0")}`;
     const existing = loadMonthlyReview(initialMonthKey);
+    const reviews = getAllMonthlyReviews();
+    const previousEntry =
+      reviews.find((entry) => entry.monthKey === initialMonthKey) ??
+      reviews.find((entry) => entry.monthKey < initialMonthKey);
+    const portfolio = loadPortfolio();
+    const runningAccounts = portfolio.filter(
+      (item) => item.type === "Asset" && item.category === "Savings Account"
+    );
+    const emergencyAccounts = portfolio.filter(
+      (item) => item.type === "Asset" && item.category === "Emergency Fund"
+    );
 
     if (existing && "version" in existing && existing.version === 2) {
       const statement = existing as MonthlyFinancialStatement;
@@ -250,7 +310,48 @@ export default function MonthlyFinancialStatementForm() {
         },
       });
     }
+
+    setAccountReview({
+      previousMonthLabel: previousEntry?.monthLabel ?? null,
+      previousRunningBalance: previousEntry?.data.assets.savingsAccount ?? "",
+      previousEmergencyBalance: previousEntry?.data.assets.emergencyFund ?? "",
+      currentRunningBalance:
+        runningAccounts.length > 0
+          ? runningAccounts.reduce((total, account) => total + account.currentValue, 0)
+          : null,
+      currentEmergencyBalance:
+        emergencyAccounts.length > 0
+          ? emergencyAccounts.reduce((total, account) => total + account.currentValue, 0)
+          : null,
+    });
+    setAccountReviewReady(true);
   }, []);
+
+  function refreshAccountBalances() {
+    const portfolio = loadPortfolio();
+    const runningAccounts = portfolio.filter(
+      (item) => item.type === "Asset" && item.category === "Savings Account"
+    );
+    const emergencyAccounts = portfolio.filter(
+      (item) => item.type === "Asset" && item.category === "Emergency Fund"
+    );
+
+    setAccountReview((previous) =>
+      previous
+        ? {
+            ...previous,
+            currentRunningBalance:
+              runningAccounts.length > 0
+                ? runningAccounts.reduce((total, account) => total + account.currentValue, 0)
+                : null,
+            currentEmergencyBalance:
+              emergencyAccounts.length > 0
+                ? emergencyAccounts.reduce((total, account) => total + account.currentValue, 0)
+                : null,
+          }
+        : previous
+    );
+  }
 
   function updateField<K extends keyof MonthlyFinancialStatement>(
     name: K,
@@ -458,6 +559,22 @@ export default function MonthlyFinancialStatementForm() {
 
     saveGoalLedger(updatedLedger);
 
+    const portfolioAtSave = loadPortfolio();
+    const runningAccounts = portfolioAtSave.filter(
+      (item) => item.type === "Asset" && item.category === "Savings Account"
+    );
+    const emergencyAccounts = portfolioAtSave.filter(
+      (item) => item.type === "Asset" && item.category === "Emergency Fund"
+    );
+    const runningBalance =
+      runningAccounts.length > 0
+        ? runningAccounts.reduce((total, account) => total + account.currentValue, 0)
+        : null;
+    const emergencyBalance =
+      emergencyAccounts.length > 0
+        ? emergencyAccounts.reduce((total, account) => total + account.currentValue, 0)
+        : null;
+
     const statementToSave: MonthlyFinancialStatement = {
       ...form,
       sipStepUp:
@@ -465,6 +582,17 @@ export default function MonthlyFinancialStatementForm() {
           ? form.sipStepUp
           : { plannedPercent: annualSipPlan, appliedThisMonth: "Not Applicable" },
       sipAnnualReview,
+      assets: {
+        ...form.assets,
+        savingsAccount:
+          runningBalance === null
+            ? form.assets.savingsAccount
+            : String(runningBalance),
+        emergencyFund:
+          emergencyBalance === null
+            ? form.assets.emergencyFund
+            : String(emergencyBalance),
+      },
     };
 
     
@@ -475,6 +603,42 @@ export default function MonthlyFinancialStatementForm() {
       getMonthLabel(new Date(year, month - 1, 1))
     );
 
+    const expenseItems = [
+      { label: "Groceries", amount: parseAmount(statementToSave.expenses.household.groceries) },
+      { label: "MESS BILL", amount: parseAmount(statementToSave.expenses.household.messBill ?? "") },
+      { label: "Electricity", amount: parseAmount(statementToSave.expenses.household.electricity) },
+      { label: "Gas", amount: parseAmount(statementToSave.expenses.household.gas) },
+      { label: "Internet", amount: parseAmount(statementToSave.expenses.household.internet) },
+      { label: "Maintenance", amount: parseAmount(statementToSave.expenses.household.maintenance) },
+      { label: "House Help", amount: parseAmount(statementToSave.expenses.household.houseHelp) },
+      { label: "Fuel", amount: parseAmount(statementToSave.expenses.household.fuel) },
+      { label: "Restaurants", amount: parseAmount(statementToSave.expenses.lifestyle.restaurants) },
+      { label: "Shopping", amount: parseAmount(statementToSave.expenses.lifestyle.shopping) },
+      { label: "Clothes", amount: parseAmount(statementToSave.expenses.lifestyle.clothes) },
+      { label: "Entertainment", amount: parseAmount(statementToSave.expenses.lifestyle.entertainment) },
+      { label: "Gym", amount: parseAmount(statementToSave.expenses.lifestyle.gym) },
+      { label: "Subscriptions", amount: parseAmount(statementToSave.expenses.lifestyle.subscriptions) },
+      { label: "Flights", amount: parseAmount(statementToSave.expenses.travel.flights) },
+      { label: "Hotels", amount: parseAmount(statementToSave.expenses.travel.hotels) },
+      { label: "Taxi", amount: parseAmount(statementToSave.expenses.travel.taxi) },
+      { label: "Holiday", amount: parseAmount(statementToSave.expenses.travel.holiday) },
+      { label: "Parents", amount: parseAmount(statementToSave.expenses.family.parents) },
+      { label: "Medical", amount: parseAmount(statementToSave.expenses.family.medical) },
+      { label: "Children", amount: parseAmount(statementToSave.expenses.family.children) },
+      { label: "Gifts", amount: parseAmount(statementToSave.expenses.family.gifts) },
+      { label: "Unexpected", amount: parseAmount(statementToSave.expenses.misc.unexpected) },
+      { label: "Repairs", amount: parseAmount(statementToSave.expenses.misc.repairs) },
+      { label: "Other", amount: parseAmount(statementToSave.expenses.misc.other) },
+    ];
+
+    setPostSaveSummary({
+      monthLabel: getMonthLabel(new Date(year, month - 1, 1)),
+      portfolio: portfolioAtSave,
+      topExpenses: expenseItems
+        .filter((item) => item.amount > 0)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 3),
+    });
     setShowNotification(true);
 
     setTimeout(() => {
@@ -485,9 +649,236 @@ export default function MonthlyFinancialStatementForm() {
   const cashAllocationCheck = calculateCashAllocation(form);
   const totalIncome = calculateMonthlyIncome(form);
   const totalExpenses = calculateTotalExpenses(form);
+  const accountComparisons = accountReview
+    ? [
+        {
+          label: "Running Account",
+          current: accountReview.currentRunningBalance,
+          previous: accountReview.previousRunningBalance,
+        },
+        {
+          label: "Emergency Account",
+          current: accountReview.currentEmergencyBalance,
+          previous: accountReview.previousEmergencyBalance,
+        },
+      ].map((account) => ({
+        ...account,
+        difference:
+          account.current !== null && account.previous.trim()
+            ? account.current - parseAmount(account.previous)
+            : null,
+      }))
+    : [];
+  const portfolioAssets =
+    postSaveSummary?.portfolio.filter((item) => item.type === "Asset") ?? [];
+  const portfolioLiabilities =
+    postSaveSummary?.portfolio.filter((item) => item.type === "Liability") ?? [];
+  const portfolioAssetTotal = portfolioAssets.reduce(
+    (total, asset) => total + asset.currentValue,
+    0
+  );
+  const portfolioLiabilityTotal = portfolioLiabilities.reduce(
+    (total, liability) => total + liability.outstandingAmount,
+    0
+  );
 
   return (
     <div className="min-h-full bg-[#0a0a0c] font-sans text-zinc-100">
+      {accountReviewReady && accountStatus === null && accountReview && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-review-title"
+            className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-blue-400">
+              Before you start
+            </p>
+            <h2 id="account-review-title" className="mt-2 text-2xl font-semibold text-white">
+              Confirm your account balances
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-400">
+              Compare the latest balances in Portfolio with your last saved monthly entry.
+              {accountReview.previousMonthLabel
+                ? ` Last saved entry: ${accountReview.previousMonthLabel}.`
+                : " There is no earlier monthly entry to compare."}
+            </p>
+
+            <div className="mt-5 space-y-3">
+              {accountComparisons.map((account) => (
+                <div key={account.label} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h3 className="font-medium text-white">{account.label}</h3>
+                    <span className="font-mono text-sm text-white">
+                      {account.current === null ? "Not tracked in Portfolio" : formatINR(account.current)}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500">
+                    {accountReview.previousMonthLabel
+                      ? `Last entry: ${account.previous.trim() ? formatINR(parseAmount(account.previous)) : "Balance not recorded"}`
+                      : "No previous balance available"}
+                  </p>
+                  {account.difference !== null && (
+                    <p className={`mt-1 text-xs ${account.difference === 0 ? "text-emerald-400" : "text-amber-300"}`}>
+                      {account.difference === 0
+                        ? "Same as last entry"
+                        : `Changed by ${account.difference > 0 ? "+" : "−"}${formatINR(Math.abs(account.difference))} in ${account.label}`}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {(accountReview.currentRunningBalance === null ||
+              accountReview.currentEmergencyBalance === null) && (
+              <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-5 text-amber-200">
+                <p>
+                  One or both balances are not tracked in Portfolio. Add or update the relevant
+                  Savings Account or Emergency Fund there to include them in this check.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-4">
+                  <a href="/portfolio" target="_blank" rel="noreferrer" className="underline underline-offset-2">
+                    Open Portfolio
+                  </a>
+                  <button type="button" onClick={refreshAccountBalances} className="underline underline-offset-2">
+                    Refresh balances
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <fieldset className="mt-5 space-y-2">
+              <legend className="mb-2 text-sm font-medium text-zinc-300">
+                Has either balance changed since the last entry?
+              </legend>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-800 p-3 text-sm text-zinc-300">
+                <input
+                  type="radio"
+                  name="account-status"
+                  checked={accountStatus === "unchanged"}
+                  onChange={() => setAccountStatus("unchanged")}
+                  className="mt-1 accent-emerald-500"
+                />
+                No, the balances are unchanged (or this is my first entry).
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-zinc-800 p-3 text-sm text-zinc-300">
+                <input
+                  type="radio"
+                  name="account-status"
+                  checked={accountStatus === "updated"}
+                  onChange={() => setAccountStatus("updated")}
+                  className="mt-1 accent-emerald-500"
+                />
+                Yes, I updated the changed account balances in Portfolio.
+              </label>
+            </fieldset>
+            <button
+              type="button"
+              disabled={accountStatus === null}
+              onClick={() => setAccountReviewReady(false)}
+              className="mt-5 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Confirm and start monthly entry
+            </button>
+          </section>
+        </div>
+      )}
+
+      {postSaveSummary && (
+        <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="post-save-summary-title"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl"
+          >
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-emerald-400">
+              Monthly entry saved
+            </p>
+            <h2 id="post-save-summary-title" className="mt-2 text-2xl font-semibold text-white">
+              {postSaveSummary.monthLabel} account summary
+            </h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              Account balances are taken from Portfolio. Expenditures are from this saved monthly entry.
+            </p>
+
+            <div className="mt-6 grid gap-5 sm:grid-cols-2">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <h3 className="font-semibold text-white">Assets</h3>
+                {portfolioAssets.length > 0 ? (
+                  <>
+                    <ul className="mt-3 space-y-2">
+                      {portfolioAssets.map((asset) => (
+                        <li key={asset.id} className="flex justify-between gap-3 text-sm">
+                          <span className="text-zinc-400">{asset.name}</span>
+                          <span className="font-mono text-white">{formatINR(asset.currentValue)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-4 flex justify-between border-t border-zinc-800 pt-3 text-sm font-semibold">
+                      <span className="text-zinc-300">Total assets</span>
+                      <span className="font-mono text-white">{formatINR(portfolioAssetTotal)}</span>
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-zinc-500">No asset accounts are recorded in Portfolio.</p>
+                )}
+              </div>
+
+              <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <h3 className="font-semibold text-white">Liabilities</h3>
+                {portfolioLiabilities.length > 0 ? (
+                  <>
+                    <ul className="mt-3 space-y-2">
+                      {portfolioLiabilities.map((liability) => (
+                        <li key={liability.id} className="flex justify-between gap-3 text-sm">
+                          <span className="text-zinc-400">{liability.name}</span>
+                          <span className="font-mono text-white">{formatINR(liability.outstandingAmount)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-4 flex justify-between border-t border-zinc-800 pt-3 text-sm font-semibold">
+                      <span className="text-zinc-300">Total liabilities</span>
+                      <span className="font-mono text-white">{formatINR(portfolioLiabilityTotal)}</span>
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-3 text-sm text-zinc-500">No liabilities are recorded in Portfolio.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-5 rounded-xl border border-rose-500/20 bg-rose-500/5 p-4">
+              <h3 className="font-semibold text-white">Top expenditures</h3>
+              {postSaveSummary.topExpenses.length > 0 ? (
+                <ol className="mt-3 space-y-2">
+                  {postSaveSummary.topExpenses.map((expense, index) => (
+                    <li key={expense.label} className="flex items-center justify-between gap-4 text-sm">
+                      <span className="text-zinc-300">
+                        <span className="mr-2 font-mono text-rose-300">{index + 1}.</span>
+                        {expense.label}
+                      </span>
+                      <span className="font-mono font-medium text-white">{formatINR(expense.amount)}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-3 text-sm text-zinc-500">No expenditure amounts were entered for this month.</p>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setPostSaveSummary(null)}
+              className="mt-5 w-full rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-500"
+            >
+              Continue
+            </button>
+          </section>
+        </div>
+      )}
+
       {showNotification && (
         <div className="fixed top-6 right-6 z-[100] flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-5 py-3.5 shadow-lg shadow-emerald-500/10 backdrop-blur-sm">
           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-sm text-white">
@@ -505,6 +896,61 @@ export default function MonthlyFinancialStatementForm() {
           className="fixed top-6 right-6 z-[100] max-w-md rounded-xl border border-amber-500/30 bg-amber-500/15 px-5 py-3.5 text-sm font-medium text-amber-200 shadow-lg shadow-amber-500/10 backdrop-blur-sm"
         >
           ⚠ {saveError}
+        </div>
+      )}
+
+      {expenseHistory && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          onClick={() => setExpenseHistory(null)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="expense-history-title"
+            className="max-h-[85vh] w-full max-w-lg overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
+              <div>
+                <p className="font-mono text-[10px] uppercase tracking-widest text-zinc-500">
+                  Monthly expenditure history
+                </p>
+                <h2 id="expense-history-title" className="mt-1 text-lg font-semibold text-white">
+                  {expenseHistory.label}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setExpenseHistory(null)}
+                aria-label="Close expenditure history"
+                className="rounded-lg px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-[65vh] overflow-y-auto p-5">
+              {expenseHistory.entries.length === 0 ? (
+                <p className="py-8 text-center text-sm text-zinc-400">
+                  No saved monthly statements yet.
+                </p>
+              ) : (
+                <ul className="divide-y divide-zinc-800">
+                  {expenseHistory.entries.map((entry) => (
+                    <li
+                      key={entry.monthKey}
+                      className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                    >
+                      <span className="text-sm text-zinc-300">{entry.monthLabel}</span>
+                      <span className="font-mono text-sm font-medium text-white">
+                        {entry.amount.trim() ? formatINR(parseAmount(entry.amount)) : "—"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </section>
         </div>
       )}
 
@@ -898,14 +1344,25 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Groceries"
                     value={form.expenses.household.groceries}
+                    onShowHistory={() => showExpenseHistory("Groceries", (statement) => statement.expenses.household.groceries)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, household: { ...prev.expenses.household, groceries: v } }
                     }))}
                   />
                   <CurrencyInput
+                    label="MESS BILL"
+                    value={form.expenses.household.messBill ?? ""}
+                    onShowHistory={() => showExpenseHistory("MESS BILL", (statement) => statement.expenses.household.messBill)}
+                    onChange={(v) => setForm((prev) => ({
+                      ...prev,
+                      expenses: { ...prev.expenses, household: { ...prev.expenses.household, messBill: v } }
+                    }))}
+                  />
+                  <CurrencyInput
                     label="Electricity"
                     value={form.expenses.household.electricity}
+                    onShowHistory={() => showExpenseHistory("Electricity", (statement) => statement.expenses.household.electricity)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, household: { ...prev.expenses.household, electricity: v } }
@@ -914,6 +1371,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Gas"
                     value={form.expenses.household.gas}
+                    onShowHistory={() => showExpenseHistory("Gas", (statement) => statement.expenses.household.gas)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, household: { ...prev.expenses.household, gas: v } }
@@ -922,6 +1380,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Internet"
                     value={form.expenses.household.internet}
+                    onShowHistory={() => showExpenseHistory("Internet", (statement) => statement.expenses.household.internet)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, household: { ...prev.expenses.household, internet: v } }
@@ -930,6 +1389,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Maintenance"
                     value={form.expenses.household.maintenance}
+                    onShowHistory={() => showExpenseHistory("Maintenance", (statement) => statement.expenses.household.maintenance)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, household: { ...prev.expenses.household, maintenance: v } }
@@ -938,6 +1398,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="House Help"
                     value={form.expenses.household.houseHelp}
+                    onShowHistory={() => showExpenseHistory("House Help", (statement) => statement.expenses.household.houseHelp)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, household: { ...prev.expenses.household, houseHelp: v } }
@@ -946,6 +1407,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Fuel"
                     value={form.expenses.household.fuel}
+                    onShowHistory={() => showExpenseHistory("Fuel", (statement) => statement.expenses.household.fuel)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, household: { ...prev.expenses.household, fuel: v } }
@@ -962,6 +1424,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Restaurants"
                     value={form.expenses.lifestyle.restaurants}
+                    onShowHistory={() => showExpenseHistory("Restaurants", (statement) => statement.expenses.lifestyle.restaurants)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, lifestyle: { ...prev.expenses.lifestyle, restaurants: v } }
@@ -970,6 +1433,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Shopping"
                     value={form.expenses.lifestyle.shopping}
+                    onShowHistory={() => showExpenseHistory("Shopping", (statement) => statement.expenses.lifestyle.shopping)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, lifestyle: { ...prev.expenses.lifestyle, shopping: v } }
@@ -978,6 +1442,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Clothes"
                     value={form.expenses.lifestyle.clothes}
+                    onShowHistory={() => showExpenseHistory("Clothes", (statement) => statement.expenses.lifestyle.clothes)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, lifestyle: { ...prev.expenses.lifestyle, clothes: v } }
@@ -986,6 +1451,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Entertainment"
                     value={form.expenses.lifestyle.entertainment}
+                    onShowHistory={() => showExpenseHistory("Entertainment", (statement) => statement.expenses.lifestyle.entertainment)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, lifestyle: { ...prev.expenses.lifestyle, entertainment: v } }
@@ -994,6 +1460,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Gym"
                     value={form.expenses.lifestyle.gym}
+                    onShowHistory={() => showExpenseHistory("Gym", (statement) => statement.expenses.lifestyle.gym)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, lifestyle: { ...prev.expenses.lifestyle, gym: v } }
@@ -1002,6 +1469,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Subscriptions"
                     value={form.expenses.lifestyle.subscriptions}
+                    onShowHistory={() => showExpenseHistory("Subscriptions", (statement) => statement.expenses.lifestyle.subscriptions)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, lifestyle: { ...prev.expenses.lifestyle, subscriptions: v } }
@@ -1018,6 +1486,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Flights"
                     value={form.expenses.travel.flights}
+                    onShowHistory={() => showExpenseHistory("Flights", (statement) => statement.expenses.travel.flights)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, travel: { ...prev.expenses.travel, flights: v } }
@@ -1026,6 +1495,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Hotels"
                     value={form.expenses.travel.hotels}
+                    onShowHistory={() => showExpenseHistory("Hotels", (statement) => statement.expenses.travel.hotels)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, travel: { ...prev.expenses.travel, hotels: v } }
@@ -1034,6 +1504,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Taxi"
                     value={form.expenses.travel.taxi}
+                    onShowHistory={() => showExpenseHistory("Taxi", (statement) => statement.expenses.travel.taxi)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, travel: { ...prev.expenses.travel, taxi: v } }
@@ -1042,6 +1513,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Holiday"
                     value={form.expenses.travel.holiday}
+                    onShowHistory={() => showExpenseHistory("Holiday", (statement) => statement.expenses.travel.holiday)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, travel: { ...prev.expenses.travel, holiday: v } }
@@ -1058,6 +1530,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Parents"
                     value={form.expenses.family.parents}
+                    onShowHistory={() => showExpenseHistory("Parents", (statement) => statement.expenses.family.parents)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, family: { ...prev.expenses.family, parents: v } }
@@ -1066,6 +1539,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Medical"
                     value={form.expenses.family.medical}
+                    onShowHistory={() => showExpenseHistory("Medical", (statement) => statement.expenses.family.medical)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, family: { ...prev.expenses.family, medical: v } }
@@ -1074,6 +1548,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Children"
                     value={form.expenses.family.children}
+                    onShowHistory={() => showExpenseHistory("Children", (statement) => statement.expenses.family.children)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, family: { ...prev.expenses.family, children: v } }
@@ -1082,6 +1557,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Gifts"
                     value={form.expenses.family.gifts}
+                    onShowHistory={() => showExpenseHistory("Gifts", (statement) => statement.expenses.family.gifts)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, family: { ...prev.expenses.family, gifts: v } }
@@ -1098,6 +1574,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Unexpected"
                     value={form.expenses.misc.unexpected}
+                    onShowHistory={() => showExpenseHistory("Unexpected", (statement) => statement.expenses.misc.unexpected)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, misc: { ...prev.expenses.misc, unexpected: v } }
@@ -1106,6 +1583,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Repairs"
                     value={form.expenses.misc.repairs}
+                    onShowHistory={() => showExpenseHistory("Repairs", (statement) => statement.expenses.misc.repairs)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, misc: { ...prev.expenses.misc, repairs: v } }
@@ -1114,6 +1592,7 @@ export default function MonthlyFinancialStatementForm() {
                   <CurrencyInput
                     label="Other"
                     value={form.expenses.misc.other}
+                    onShowHistory={() => showExpenseHistory("Other", (statement) => statement.expenses.misc.other)}
                     onChange={(v) => setForm((prev) => ({
                       ...prev,
                       expenses: { ...prev.expenses, misc: { ...prev.expenses.misc, other: v } }

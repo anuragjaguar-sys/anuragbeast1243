@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -11,7 +11,6 @@ export async function proxy(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Development bypass if credentials are missing
   if (!supabaseUrl || !supabaseAnonKey) {
     return response;
   }
@@ -39,7 +38,6 @@ export async function proxy(request: NextRequest) {
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/signup") || pathname.startsWith("/auth");
   const isPublicApi = pathname.startsWith("/api/public");
 
-  // Allow auth pages and public APIs to proceed unauthenticated
   if (isAuthPage || isPublicApi) {
     if (user && (pathname.startsWith("/login") || pathname.startsWith("/signup"))) {
       const redirectUrl = request.nextUrl.clone();
@@ -49,7 +47,6 @@ export async function proxy(request: NextRequest) {
     return response;
   }
 
-  // Redirect unauthenticated visitors to login
   if (!user) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";

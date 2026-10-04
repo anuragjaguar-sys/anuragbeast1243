@@ -97,12 +97,21 @@ describe("CloudSyncService", () => {
       error: null,
     });
 
-    const mockMaybeSingle = vi.fn().mockResolvedValue({
-      data: { data: remoteData },
+    const remoteRows = [
+      {
+        store_key: "goals",
+        payload: { data: remoteData.goals, updatedAt: 100 },
+      },
+      {
+        store_key: "portfolio",
+        payload: { data: remoteData.portfolio, updatedAt: 100 },
+      },
+    ];
+
+    const mockEq = vi.fn().mockResolvedValue({
+      data: remoteRows,
       error: null,
     });
-
-    const mockEq = vi.fn().mockReturnValue({ maybeSingle: mockMaybeSingle });
     const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
 
     vi.mocked(supabase.from).mockReturnValue({

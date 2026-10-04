@@ -1,16 +1,5 @@
-/**
- * =====================================================
- * FIRE54 Retirement Intelligence Engine
- * =====================================================
- * Financial Calculation Utilities
- */
-
 import type { RetirementAssumptions } from "./types";
 
-/**
- * Inflate today's monthly income
- * to retirement year.
- */
 export function calculateFutureMonthlyIncome(
   monthlyIncomeToday: number,
   inflationRate: number,
@@ -19,9 +8,6 @@ export function calculateFutureMonthlyIncome(
   return monthlyIncomeToday * Math.pow(1 + inflationRate, years);
 }
 
-/**
- * Annual retirement income.
- */
 export function calculateAnnualRetirementIncome(
   monthlyIncome: number
 ): number {
@@ -29,72 +15,50 @@ export function calculateAnnualRetirementIncome(
 }
 
 /**
- * Corpus required using
- * Safe Withdrawal Rate.
+ * Calculates Required Corpus using SWR, optionally factoring in Section 112A LTCG tax.
  */
 export function calculateRequiredCorpus(
   annualIncome: number,
-  withdrawalRate: number
+  withdrawalRate: number,
+  includeLtcgTaxHaircut: boolean = false
 ): number {
-  return annualIncome / withdrawalRate;
+  if (withdrawalRate <= 0) return 0;
+  const baseCorpus = annualIncome / withdrawalRate;
+  
+  if (!includeLtcgTaxHaircut) return baseCorpus;
+
+  const estimatedEmbeddedGains = Math.max(0, (annualIncome * 0.75) - 125000);
+  const estimatedAnnualTax = estimatedEmbeddedGains * 0.125;
+  const grossIncomeNeeded = annualIncome + estimatedAnnualTax;
+
+  return grossIncomeNeeded / withdrawalRate;
 }
 
-/**
- * Years left until retirement.
- */
 export function calculateYearsRemaining(
   assumptions: RetirementAssumptions
 ): number {
   return assumptions.retirementAge - assumptions.currentAge;
 }
 
-/**
- * FIRE Score
- */
 export function calculateFireScore(
   projectedCorpus: number,
   requiredCorpus: number
 ): number {
-
-  if (requiredCorpus <= 0) {
-    return 100;
-  }
-
-  return Math.min(
-    100,
-    Math.round(
-      (projectedCorpus / requiredCorpus) * 100
-    )
-  );
-
+  if (requiredCorpus <= 0) return 100;
+  return Math.min(100, Math.round((projectedCorpus / requiredCorpus) * 100));
 }
 
-/**
- * Retirement Status
- */
 export function calculateRetirementStatus(
   fireScore: number
 ): "Ahead" | "On Track" | "Behind" {
-
-  if (fireScore >= 100) {
-    return "Ahead";
-  }
-
-  if (fireScore >= 80) {
-    return "On Track";
-  }
-
+  if (fireScore >= 100) return "Ahead";
+  if (fireScore >= 80) return "On Track";
   return "Behind";
-
 }
-/**
- * =====================================================
- * Post-Retirement 12.5% Equity LTCG Tax Haircut Engine
- * =====================================================
- * Computes the exact tax drag on SWP redemptions under
- * Section 112A (12.5% LTCG with ₹1.25L annual exemption).
- */
 
+/**
+ * Post-Retirement 12.5% Equity LTCG Tax Haircut Engine (Section 112A)
+ */
 export interface SWPTaxResult {
   grossWithdrawal: number;
   gainRatio: number;
@@ -128,7 +92,6 @@ export function calculateSWPLTCGTax(
     };
   }
 
-  // Calculate proportion of current corpus that represents profit
   const gainRatio = Math.min(1, Math.max(0, 1 - (costBasis / corpusValue)));
   const embeddedGains = annualWithdrawal * gainRatio;
   const principalRedeemed = annualWithdrawal * (1 - gainRatio);

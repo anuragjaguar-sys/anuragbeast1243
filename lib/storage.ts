@@ -69,6 +69,7 @@ function migrateLegacyData(
     expenses: {
       household: {
         groceries: "",
+        messBill: "",
         electricity: "",
         gas: "",
         internet: "",
