@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import PortfolioSummary from "@/components/portfolio/PortfolioSummary";
 import PortfolioTable from "@/components/portfolio/PortfolioTable";
@@ -11,126 +10,82 @@ import {
   Asset,
   Liability,
   PortfolioItem,
-    saveCurrentPortfolio,
+  getPortfolio,
+  saveCurrentPortfolio,
 } from "@/lib/investments";
 
 export default function PortfolioPage() {
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
-
   const [showForm, setShowForm] = useState(false);
-  const [editingItem, setEditingItem] =
-  useState<PortfolioItem | null>(null);
-// hydrated via lazy state
-  const handleSave = (
-  item: Asset | Liability
-) => {
+  const [editingItem, setEditingItem] = useState<PortfolioItem | null>(null);
 
-  let updatedPortfolio: PortfolioItem[];
+  useEffect(() => {
+    const loaded = getPortfolio();
+    setPortfolio(loaded);
+  }, []);
 
-  if (editingItem) {
+  const handleSave = (item: Asset | Liability) => {
+    const currentItems = getPortfolio();
+    let updatedPortfolio: PortfolioItem[];
 
-    updatedPortfolio = portfolio.map((p) =>
-      p.id === editingItem.id
-        ? {
-            ...item,
-            id: editingItem.id,
-          }
-        : p
-    );
+    if (editingItem) {
+      updatedPortfolio = currentItems.map((p) =>
+        p.id === editingItem.id ? { ...item, id: editingItem.id } : p
+      );
+    } else {
+      updatedPortfolio = [...currentItems, item];
+    }
 
-  } else {
-
-    updatedPortfolio = [
-      ...portfolio,
-      item,
-    ];
-
-  }
-
-  setPortfolio(updatedPortfolio);
-
-  saveCurrentPortfolio(updatedPortfolio);
-
-  setEditingItem(null);
-
-  setShowForm(false);
-
-};
+    setPortfolio(updatedPortfolio);
+    saveCurrentPortfolio(updatedPortfolio);
+    setEditingItem(null);
+    setShowForm(false);
+  };
 
   const handleDelete = (id: string) => {
+    const currentItems = getPortfolio();
+    const updatedPortfolio = currentItems.filter((item) => item.id !== id);
+    setPortfolio(updatedPortfolio);
+    saveCurrentPortfolio(updatedPortfolio);
+  };
 
-  const updatedPortfolio =
-    portfolio.filter(
-      (item) => item.id !== id
-    );
-
-  setPortfolio(updatedPortfolio);
-
-  saveCurrentPortfolio(updatedPortfolio);
-
-};
-  const handleEdit = (
-  item: PortfolioItem
-) => {
-
-  setEditingItem(item);
-
-  setShowForm(true);
-
-  // Sprint 4C
-  // This will open PortfolioForm
-  // with existing values.
-};
+  const handleEdit = (item: PortfolioItem) => {
+    setEditingItem(item);
+    setShowForm(true);
+  };
 
   return (
     <main className="mx-auto max-w-7xl space-y-8 p-8">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Link
+            href="/"
+            className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:border-blue-500 hover:text-white"
+          >
+            ← Dashboard
+          </Link>
+          <div>
+            <h1 className="text-4xl font-bold text-white">Portfolio</h1>
+            <p className="mt-2 text-zinc-400">Manage your Assets & Liabilities</p>
+          </div>
+        </div>
 
-     {/* Header */}
+        <button
+          onClick={() => {
+            setEditingItem(null);
+            setShowForm(true);
+          }}
+          className="rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700"
+        >
+          + Add Portfolio Item
+        </button>
+      </div>
 
-<div className="flex items-center justify-between">
-
-  <div className="flex items-center gap-4">
-
-    <Link
-      href="/"
-      className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300 transition hover:border-blue-500 hover:text-white"
-    >
-      ← Dashboard
-    </Link>
-
-    <div>
-
-      <h1 className="text-4xl font-bold text-white">
-        Portfolio
-      </h1>
-
-      <p className="mt-2 text-zinc-400">
-        Manage your Assets & Liabilities
-      </p>
-
-    </div>
-
-  </div>
-
-  <button
-    onClick={() => {
-      setEditingItem(null);
-      setShowForm(true);
-    }}
-    className="rounded-xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700"
-  >
-    + Add Portfolio Item
-  </button>
-
-</div>
       {/* Summary */}
-
-      <PortfolioSummary
-        portfolio={portfolio}
-      />
+      <PortfolioSummary portfolio={portfolio} />
 
       {/* Form */}
-
       {showForm && (
         <PortfolioForm
           item={editingItem}
@@ -143,7 +98,6 @@ export default function PortfolioPage() {
       )}
 
       {/* Assets */}
-
       <PortfolioTable
         title="Assets"
         type="Asset"
@@ -153,7 +107,6 @@ export default function PortfolioPage() {
       />
 
       {/* Liabilities */}
-
       <PortfolioTable
         title="Liabilities"
         type="Liability"
@@ -161,7 +114,6 @@ export default function PortfolioPage() {
         onDelete={handleDelete}
         onEdit={handleEdit}
       />
-
     </main>
   );
 }
