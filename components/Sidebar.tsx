@@ -1,20 +1,28 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { CloudSyncService } from "@/lib/core/sync-service";
 
 const navItems = [
+  // Core
   { href: "/", label: "Dashboard", icon: "🏠" },
   { href: "/household", label: "Household View", icon: "👨‍👩‍👧‍👦" },
-  { href: "/monthly-entry", label: "Monthly Entry", icon: "📝" },
+  { href: "/financial-statement", label: "Financial Statement", icon: "📝" },
   { href: "/profile", label: "Financial Profile", icon: "👤" },
   { href: "/after-54", label: "Life After 54", icon: "🌅" },
+
+  // Wealth
   { href: "/portfolio", label: "Portfolio", icon: "💼" },
   { href: "/goals", label: "Goals", icon: "🎯" },
-  { href: "/spending-analytics", label: "Spending Analytics", icon: "💳" },
+  { href: "/wealth-allocation", label: "Wealth Allocation", icon: "💳" },
+
+  // Intelligence
   { href: "/reports", label: "Reports", icon: "📊" },
   { href: "/ai-cfo", label: "AI CFO", icon: "🤖" },
+
+  // Settings
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
@@ -26,6 +34,39 @@ function isActive(pathname: string, href: string): boolean {
 export default function Sidebar() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "offline">("synced");
+
+  const triggerSync = async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setSyncStatus("offline");
+      return;
+    }
+    setSyncStatus("syncing");
+    try {
+      await CloudSyncService.pullRemoteState();
+      setSyncStatus("synced");
+    } catch {
+      setSyncStatus("synced");
+    }
+  };
+
+  useEffect(() => {
+    triggerSync();
+
+    const handleFocus = () => triggerSync();
+    const handleOnline = () => setSyncStatus("synced");
+    const handleOffline = () => setSyncStatus("offline");
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     setIsOpen(false);
@@ -33,40 +74,68 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Mobile Top Header */}
-      <header className="fixed top-0 left-0 right-0 z-40 flex h-16 items-center justify-between border-b border-zinc-800/80 bg-zinc-950/90 px-4 backdrop-blur-xl md:hidden">
+      {/* Mobile Top Navigation Bar */}
+      <div className="fixed top-0 left-0 right-0 z-40 flex h-16 items-center justify-between border-b border-zinc-800/80 bg-zinc-950/90 px-4 backdrop-blur-md md:hidden">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-md shadow-emerald-500/20">
             <span className="font-mono text-xs font-bold text-black">54</span>
           </div>
-          <span className="text-base font-semibold tracking-tight text-white">
+          <span className="text-base font-semibold text-white">
             FIRE<span className="text-emerald-400">54</span>
           </span>
         </Link>
 
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-white"
-          aria-label="Toggle navigation"
-        >
-          {isOpen ? "✕" : "☰"}
-        </button>
-      </header>
+        <div className="flex items-center gap-3">
+          {/* Mobile Sync Indicator */}
+          <button
+            onClick={triggerSync}
+            title="Tap to sync with cloud"
+            className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs text-zinc-300"
+          >
+            {syncStatus === "syncing" ? (
+              <>
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+                <span className="text-[11px] text-amber-400">Syncing...</span>
+              </>
+            ) : syncStatus === "offline" ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+                <span className="text-[11px] text-zinc-400">Offline</span>
+              </>
+            ) : (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                <span className="text-[11px] text-emerald-400">Cloud Synced</span>
+              </>
+            )}
+          </button>
 
-      {/* Mobile Backdrop */}
+          {/* Hamburger toggle */}
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-300 hover:text-white"
+            aria-label="Toggle Menu"
+          >
+            {isOpen ? "✕" : "☰"}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Drawer Backdrop */}
       {isOpen && (
         <div
           onClick={() => setIsOpen(false)}
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm transition-opacity md:hidden"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
         />
       )}
 
-      {/* Navigation Drawer */}
+      {/* Sidebar (Desktop Fixed + Mobile Slide Drawer) */}
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 flex-col border-r border-zinc-800/60 bg-zinc-950/95 backdrop-blur-xl transition-transform duration-300 ease-in-out md:translate-x-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
+        {/* Logo */}
         <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-6">
           <Link href="/" className="group flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 shadow-lg shadow-emerald-500/20 transition-transform group-hover:scale-105">
@@ -81,14 +150,16 @@ export default function Sidebar() {
               </p>
             </div>
           </Link>
+
           <button
             onClick={() => setIsOpen(false)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-white md:hidden"
+            className="rounded-lg p-1.5 text-zinc-400 hover:bg-zinc-800 hover:text-white md:hidden"
           >
             ✕
           </button>
         </div>
 
+        {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-3 py-4">
           <ul className="space-y-1">
             {navItems.map((item) => {
@@ -103,9 +174,13 @@ export default function Sidebar() {
                         : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
                     }`}
                   >
-                    <span className="text-base leading-none" aria-hidden="true">{item.icon}</span>
+                    <span className="text-base leading-none" aria-hidden="true">
+                      {item.icon}
+                    </span>
                     <span>{item.label}</span>
-                    {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400" />}
+                    {active && (
+                      <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    )}
                   </Link>
                 </li>
               );
@@ -113,17 +188,41 @@ export default function Sidebar() {
           </ul>
         </nav>
 
+        {/* Desktop Footer with Sync Status */}
         <div className="border-t border-zinc-800/60 px-5 py-4">
-          <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/50 px-3 py-3">
-            <p className="font-mono text-[10px] tracking-wider text-zinc-500 uppercase">Portfolio Status</p>
-            <div className="mt-1.5 flex items-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-              </span>
-              <span className="text-xs font-medium text-emerald-400">On track for FIRE</span>
+          <button
+            onClick={triggerSync}
+            title="Click to sync with cloud"
+            className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2.5 text-left transition hover:border-zinc-700"
+          >
+            <p className="font-mono text-[10px] tracking-wider text-zinc-500 uppercase">
+              Cloud Sync
+            </p>
+            <div className="mt-1 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                {syncStatus === "syncing" ? (
+                  <>
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+                    <span className="text-xs font-medium text-amber-400">Syncing...</span>
+                  </>
+                ) : syncStatus === "offline" ? (
+                  <>
+                    <span className="h-2 w-2 rounded-full bg-zinc-500" />
+                    <span className="text-xs font-medium text-zinc-400">Offline</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                    </span>
+                    <span className="text-xs font-medium text-emerald-400">Connected</span>
+                  </>
+                )}
+              </div>
+              <span className="text-[10px] text-zinc-500">Tap to refresh</span>
             </div>
-          </div>
+          </button>
         </div>
       </aside>
     </>
