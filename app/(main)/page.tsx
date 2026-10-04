@@ -18,7 +18,10 @@ import {
   getLiabilities, 
   runPortfolioMigration,
   getPortfolioSummary,
-  getPortfolioInsights
+  getPortfolioInsights,
+  getMonthlyInvestment,
+  getMonthlyEMI,
+  getTotalLiabilities,
 } from "@/lib/investments";
 import { getWealthMetrics } from "@/lib/wealth/wealth-engine";
 import { 
@@ -62,6 +65,7 @@ const accentRing: Record<string, string> = {
   blue: "from-blue-500/20 to-transparent border-blue-500/20",
   violet: "from-violet-500/20 to-transparent border-violet-500/20",
   amber: "from-amber-500/20 to-transparent border-amber-500/20",
+  cyan: "from-cyan-500/20 to-transparent border-cyan-500/20",
 };
 
 const accentText: Record<string, string> = {
@@ -69,6 +73,7 @@ const accentText: Record<string, string> = {
   blue: "text-blue-400",
   violet: "text-violet-400",
   amber: "text-amber-400",
+  cyan: "text-cyan-400",
 };
 
 function UpArrow() {
