@@ -21,6 +21,8 @@ export type AssetCategory =
   | "ETF"
   | "Gold"
   | "Fixed Deposit"
+  | "Real Estate"
+  | "Property"
   | "Emergency Fund"
   | "Savings Account"
   | "Cash"

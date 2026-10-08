@@ -382,10 +382,15 @@ return (
       <option>Mutual Fund</option>
       <option>PPF</option>
       <option>EPF</option>
+      <option>NPS</option>
       <option>Stocks</option>
+      <option>Fixed Deposit</option>
       <option>Gold</option>
+      <option>Real Estate</option>
+      <option>Property</option>
       <option>Emergency Fund</option>
       <option>Savings Account</option>
+      <option>Other</option>
     </select>
 
   </div>
