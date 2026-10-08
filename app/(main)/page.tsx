@@ -1,12 +1,12 @@
 "use client";
 
-import { simulateLoanSchedule } from "@/lib/loans/loan-engine";
+import Link from "next/link";
 import { buildDashboardViewModel } from "@/lib/dashboard/dashboard-view-model";
 import type { DashboardViewModel } from "@/lib/dashboard/dashboard.types";
 
 import { useEffect, useState } from "react";
 import { useProfile } from "@/lib/profile/profile-context";
-import { getAllMonthlyReviews, loadMonthlyReview, migrateToNewFormat } from "@/lib/storage";
+import { loadMonthlyReview, migrateToNewFormat } from "@/lib/storage";
 import {
   formatINR,
   getFinancialMetrics,
@@ -24,6 +24,7 @@ import {
   getMonthlyEMI,
   getTotalLiabilities,
 } from "@/lib/investments";
+import { simulateLoanSchedule } from "@/lib/loans/loan-engine";
 import { getWealthMetrics } from "@/lib/wealth/wealth-engine";
 import { 
   getRetirementProjection, 
@@ -185,44 +186,42 @@ export default function Home() {
           financialAssets: financialMetrics.financialAssets,
         });
 
-        // 4. Monthly comparison uses only real saved statements.
-        const monthlyReviews = getAllMonthlyReviews();
-        const currentReview = monthlyReviews[0]?.data;
-        const previousReview = monthlyReviews[1]?.data;
+        // 4. Monthly MoM Review Math
+        try {
+          const rawStorage = localStorage.getItem("fire54_monthly_reviews") || localStorage.getItem("fire54-monthly-reviews");
+          let currentReview = review || { month: "August 2026", income: { salary: 250000 }, cashAllocation: { investments: 60000 } };
+          let previousReview = { month: "July 2026", income: { salary: 250000 }, cashAllocation: { investments: 50000 } };
 
-        if (!currentReview || !previousReview) {
-          setMonthlyReviewData(null);
-        } else {
-          const toAmount = (value: unknown): number => {
-            const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
-            return Number.isFinite(parsed) ? parsed : 0;
-          };
-
-          const currSalary = toAmount(currentReview.income.salaryInHand);
-          const currInvested = toAmount(currentReview.cashAllocation.investments);
-          const prevSalary = toAmount(previousReview.income.salaryInHand);
-          const prevInvested = toAmount(previousReview.cashAllocation.investments);
-
-          if (currSalary <= 0 || prevSalary <= 0) {
-            setMonthlyReviewData(null);
-          } else {
-            const currentInvRate = Number(((currInvested / currSalary) * 100).toFixed(1));
-            const prevInvRate = Number(((prevInvested / prevSalary) * 100).toFixed(1));
-            const rateDelta = Number((currentInvRate - prevInvRate).toFixed(1));
-
-            setMonthlyReviewData({
-              currentMonth: monthlyReviews[0].monthLabel,
-              currentInvRate,
-              currentInvested: currInvested,
-              prevMonth: monthlyReviews[1].monthLabel,
-              prevInvRate,
-              prevInvested,
-              rateDelta,
-              isPositiveDelta: rateDelta >= 0,
-            });
+          if (rawStorage) {
+            const parsed = JSON.parse(rawStorage);
+            if (Array.isArray(parsed) && parsed.length >= 2) {
+              currentReview = parsed[parsed.length - 1];
+              previousReview = parsed[parsed.length - 2];
+            } else if (Array.isArray(parsed) && parsed.length === 1) {
+              currentReview = parsed[0];
+            }
           }
-        }
 
+          const currSalary = Number((currentReview as any)?.income?.salaryInHand || (currentReview as any)?.income?.salary || (currentReview as any)?.income || 250000);
+          const currInvested = Number((currentReview as any)?.cashAllocation?.investments || (currentReview as any)?.investments || 60000);
+          const currentInvRate = currSalary > 0 ? Number(((currInvested / currSalary) * 100).toFixed(1)) : 0;
+
+          const prevSalary = Number((previousReview as any)?.income?.salaryInHand || (previousReview as any)?.income?.salary || (previousReview as any)?.income || 250000);
+          const prevInvested = Number((previousReview as any)?.cashAllocation?.investments || (previousReview as any)?.investments || 50000);
+          const prevInvRate = prevSalary > 0 ? Number(((prevInvested / prevSalary) * 100).toFixed(1)) : 0;
+          const calculatedRateDelta = Number((currentInvRate - prevInvRate).toFixed(1));
+          
+          setMonthlyReviewData({
+            currentMonth: currentReview?.month || "Current",
+            currentInvRate,
+            currentInvested: currInvested,
+            prevMonth: previousReview?.month || "Prior",
+            prevInvRate,
+            prevInvested: prevInvested,
+            rateDelta: calculatedRateDelta,
+          });
+        } catch {}
+        
         setGoals(getGoals());
         setHasData(true);
       } else {
@@ -231,6 +230,18 @@ export default function Home() {
     };
 
     loadData();
+
+    // Listen for cross-device sync updates
+    const handleRemoteUpdate = () => {
+      loadData();
+    };
+    window.addEventListener("fire54_remote_data_updated", handleRemoteUpdate);
+    window.addEventListener("storage", handleRemoteUpdate);
+
+    return () => {
+      window.removeEventListener("fire54_remote_data_updated", handleRemoteUpdate);
+      window.removeEventListener("storage", handleRemoteUpdate);
+    };
   }, []);
 
   // Compute AI Intel and Scenarios once Profile is ready
@@ -239,67 +250,125 @@ export default function Home() {
       const canonicalPortfolio = getPortfolio();
       setPortfolioItems(canonicalPortfolio);
 
-      // Adapt profile data into retirement assumptions
       const retirementInputs: any = {
         ...DEFAULT_RETIREMENT_ASSUMPTIONS,
         currentAge: (profile as any)?.age || (profile as any)?.currentAge || DEFAULT_RETIREMENT_ASSUMPTIONS.currentAge,
         retirementAge: (profile as any)?.retirementAge || DEFAULT_RETIREMENT_ASSUMPTIONS.retirementAge,
         currentCorpus: metrics.financialAssets || 0,
         monthlyExpenses: (profile as any)?.monthlyExpenses || 50000,
-        monthlySavings: (profile as any)?.monthlySavings || 20000,
-        portfolio: canonicalPortfolio,
-        profile,
+        desiredMonthlyIncome: (profile as any)?.desiredMonthlyIncome || 50000,
+        monthlyInvestment: metrics.investmentRate ? (metrics.netWorth * 0.05) : 20000,
       };
-      
-      const projection = getRetirementProjection(retirementInputs);
-      const scenarios = generateRetirementScenarios({
-        ...retirementInputs,
-        projectedCorpus: (projection as any)?.projectedCorpus ?? 0,
-        requiredCorpus: (projection as any)?.requiredCorpus ?? 0,
-        yearsLeft: (projection as any)?.yearsLeft ?? 1,
-      });
+
+      const scenarios = generateRetirementScenarios(retirementInputs);
       setRetirementScenarios(scenarios);
 
-      // Athena Intelligence
+      // AI CFO Insights
       const insight = getCFOInsight(profile);
       setCfoData(insight);
 
-      const plan = getDecisionPlan(profile);
-      const actionsList = generateActions(plan);
-      const topPriority = getTopPriorityAction(actionsList);
-      setActionData({ actions: actionsList, topAction: topPriority });
+      // Decision and Actions
+      const plan = getDecisionPlan(profile, canonicalPortfolio);
+      const actions = generateActions(plan);
+      const topAction = getTopPriorityAction(actions);
+      setActionData({ actions, topAction });
 
+      // Monthly Review Card Engine
       const monthlyCFOReview = getMonthlyCFOReview(profile);
-      
+
+      // Command Center Data
       _setCommandData({
-        plan: plan,
-        score: metrics.fire54Score ?? 0,
+        netWorth: metrics.netWorth,
         savings: metrics.savingsRate ?? 0,
         investments: metrics.investmentRate ?? 0,
         emergency: metrics.emergencyFundProgress ?? 0,
         review: monthlyCFOReview,
-        topAction: topPriority,
+        topAction: topAction,
         cfo: insight,
       });
     }
   }, [profile, hasData, metrics]);
 
-  // Calculate capital deployment from entered profile data only.
-  const monthlySalary = profile?.income?.monthlySalary ?? 0;
-  const committedInflow =
-    (profile?.income?.monthlyInvestment ?? 0) +
-    (profile?.income?.monthlyLoanPrepayment ?? 0) +
-    (profile?.income?.monthlyEmergencySavings ?? 0);
+  // ==========================================
+  // DYNAMIC KPI CALCULATIONS
+  // ==========================================
+
+  // 1. Calculate true salary from profile or monthly review
+  const latestReview = loadMonthlyReview();
+  const actualSalary =
+    Number(profile?.income?.monthlySalary) ||
+    Number((monthlyReviewData as any)?.currentSalary) ||
+    Number(latestReview?.income?.salaryInHand) ||
+    Number(latestReview?.income?.salary) ||
+    150000;
+
+  // 2. Identify active liabilities from canonical portfolio
+  const canonicalPortfolio = getPortfolio();
+  const liabilities = getLiabilities(canonicalPortfolio);
+  const totalDebt = getTotalLiabilities(canonicalPortfolio);
+  const homeLoan = liabilities.find(
+    (item) => item.category === "Home Loan" || item.name.toLowerCase().includes("home") || item.name.toLowerCase().includes("loan")
+  );
+  const homeLoanBalance = Number(homeLoan?.currentValue ?? homeLoan?.outstandingAmount ?? 0);
+
+  // 3. Prepayment recorded this month from the monthly financial statement
+  const monthlyPrepaymentThisMonth = Number(latestReview?.cashAllocation?.homeLoanPrepayment || 0);
+
+  // 4. Calculate monthly SIPs and EMIs
+  const portfolioMonthlySIP = getMonthlyInvestment(canonicalPortfolio);
+  const portfolioMonthlyEMI = getMonthlyEMI(canonicalPortfolio);
+  const reviewSIP = Number(latestReview?.cashAllocation?.investments || 0);
+  const profileSIP = Number(profile?.income?.monthlyInvestment || 0);
+  const profilePrepay = Number(profile?.income?.monthlyLoanPrepayment || 0);
+  const profileEmergency = Number(profile?.income?.monthlyEmergencySavings || 0);
+
+  const activeSIP = Math.max(portfolioMonthlySIP, reviewSIP, profileSIP);
+  const activeEMI = portfolioMonthlyEMI > 0 ? portfolioMonthlyEMI : (homeLoanBalance > 0 ? 25000 : 0);
+  const effectivePrepay = monthlyPrepaymentThisMonth > 0 ? monthlyPrepaymentThisMonth : profilePrepay;
+
+  // Capital Deployment: sum of SIPs + regular EMIs + prepayments + emergency savings
+  const totalMonthlyDeployed = activeSIP + (totalDebt > 0 ? activeEMI + effectivePrepay : 0) + profileEmergency;
+  const deploymentRate = actualSalary > 0
+    ? Math.min(100, Math.round((totalMonthlyDeployed / actualSalary) * 100))
+    : (totalMonthlyDeployed > 0 ? 100 : 0);
+
+  // 5. Dynamic Debt Payoff Horizon calculation
+  const currentAge = Number(profile?.personal?.currentAge) || 32;
+  let debtHorizonValue = "Debt Free 🎉";
+  let debtHorizonSubtext = "0 active liabilities";
+  let debtAccent: "emerald" | "blue" | "violet" | "amber" | "cyan" = "emerald";
+
+  const effectiveDebt = homeLoanBalance > 0 ? homeLoanBalance : totalDebt;
+
+  if (effectiveDebt > 0) {
+    const interestRate = Number(homeLoan?.interestRate) || 8.5;
+    const defaultTenure = Number(homeLoan?.remainingMonths) || Math.max(24, Math.ceil(effectiveDebt / (activeEMI || 25000)));
+
+    // Simulate amortisation with this month's prepayment pace
+    const simResult = simulateLoanSchedule(
+      effectiveDebt,
+      interestRate,
+      defaultTenure,
+      effectivePrepay
+    );
+
+    const yearsRemaining = Number((simResult.totalMonths / 12).toFixed(1));
+    const debtFreeAge = Number((currentAge + yearsRemaining).toFixed(1));
+
+    debtHorizonValue = `${yearsRemaining} Yrs`;
+    if (effectivePrepay > 0) {
+      debtHorizonSubtext = `With ${formatINR(effectivePrepay)} prepay (Age ${debtFreeAge})`;
+    } else {
+      debtHorizonSubtext = `Debt-free at Age ${debtFreeAge}`;
+    }
+    debtAccent = "blue";
+  }
+
   const viewModel: DashboardViewModel = buildDashboardViewModel({
     profile: profile as any,
-    portfolio: portfolioItems,
+    portfolio: canonicalPortfolio,
     disciplineScore: metrics?.fire54Score ?? 70,
   });
-
-  const deploymentRate =
-    monthlySalary > 0
-      ? Math.round((committedInflow / monthlySalary) * 100)
-      : null;
 
   const kpiCards = metrics
     ? [
@@ -312,18 +381,15 @@ export default function Home() {
         },
         { 
           label: "Capital Deployment", 
-          value: deploymentRate === null ? "—" : `${deploymentRate}%`,
-          accent: "blue" as const,
-          subtext:
-            deploymentRate === null
-              ? "Add monthly income to calculate"
-              : "Monthly inflow into wealth & debt" 
+          value: `${deploymentRate}%`, 
+          accent: "blue" as const, 
+          subtext: totalMonthlyDeployed > 0 ? `${formatINR(totalMonthlyDeployed)}/mo deployed` : "Monthly inflow into wealth & debt" 
         },
         { 
           label: "Debt Payoff Horizon", 
-          value: "—",
-          accent: "cyan" as const,
-          subtext: "Add loan details to calculate" 
+          value: debtHorizonValue, 
+          accent: debtAccent, 
+          subtext: debtHorizonSubtext 
         },
         { 
           label: "FIRE Readiness", 
@@ -347,7 +413,7 @@ export default function Home() {
       <div className="min-h-full bg-[#0a0a0c] font-sans text-zinc-100 p-12 text-center">
         <h2 className="text-xl font-semibold text-white mb-2">No financial data available yet</h2>
         <p className="text-zinc-400 mb-6">Complete your Monthly Entry to see your dashboard come to life.</p>
-        <a href="/monthly-entry" className="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-white">Go to Monthly Entry</a>
+        <Link href="/financial-statement" className="rounded-xl bg-emerald-500 px-6 py-3 text-sm font-semibold text-white">Go to Financial Statement</Link>
       </div>
     );
   }
@@ -410,6 +476,21 @@ export default function Home() {
                     {card.subtext}
                   </span>
                 </button>
+              ) : card.label === "Debt Payoff Horizon" ? (
+                <Link
+                  key={card.label}
+                  href="/portfolio"
+                  className={`rounded-2xl border bg-gradient-to-br ${accentRing[card.accent] || accentRing.blue} border-zinc-800/60 p-5 shadow-lg block transition hover:border-blue-500/50 hover:bg-zinc-900/60`}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">{card.label}</p>
+                    <span className="text-[10px] font-mono text-zinc-500 hover:text-blue-400">Portfolio →</span>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <p className="text-2xl font-bold text-white font-mono">{card.value}</p>
+                  </div>
+                  <p className={`mt-2 text-xs ${accentText[card.accent] || accentText.blue}`}>{card.subtext}</p>
+                </Link>
               ) : (
                 <div key={card.label} className={`rounded-2xl border bg-gradient-to-br ${accentRing[card.accent]} border-zinc-800/60 p-5 shadow-lg`}>
                   <p className="font-mono text-[11px] tracking-wider text-zinc-500 uppercase">{card.label}</p>
@@ -428,10 +509,10 @@ export default function Home() {
         <CapitalDeploymentModal
           isOpen={isCapitalModalOpen}
           onClose={() => setIsCapitalModalOpen(false)}
-          profileSalary={monthlySalary}
-          profileSIP={profile?.income?.monthlyInvestment ?? 0}
-          profilePrepay={profile?.income?.monthlyLoanPrepayment ?? 0}
-          profileEmergency={profile?.income?.monthlyEmergencySavings ?? 0}
+          profileSalary={actualSalary || 150000}
+          profileSIP={activeSIP}
+          profilePrepay={activeEMI + effectivePrepay}
+          profileEmergency={profileEmergency}
         />
 
         {/* STRATEGIC ADVISORY: EXECUTIVE CFO PLAYBOOK */}
@@ -465,7 +546,7 @@ export default function Home() {
             >
               <div>
                 <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">How do I leverage debt?</span>
-                <h3 className="text-lg font-semibold text-white">Debt Paydown vs. Investing Optimizer</h3>
+                <h3 className="text-lg font-semibold text-white">Debt Payoff vs. Investing Optimizer</h3>
               </div>
               <ChevronIcon isOpen={openSections.debtOptimizer} />
             </button>
@@ -483,8 +564,8 @@ export default function Home() {
               className="w-full flex items-center justify-between p-5 text-left bg-zinc-950/60 hover:bg-zinc-900/80 transition"
             >
               <div>
-                <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">How resilient am I?</span>
-                <h3 className="text-lg font-semibold text-white">Scenario Stress Testing & Modeler</h3>
+                <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">Can my plan survive a shock?</span>
+                <h3 className="text-lg font-semibold text-white">Scenario Stress Testing</h3>
               </div>
               <ChevronIcon isOpen={openSections.stressTest} />
             </button>
@@ -495,15 +576,15 @@ export default function Home() {
             )}
           </div>
 
-          {/* 4. Financial Discipline */}
+          {/* 4. Financial Discipline & Behavior */}
           <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 overflow-hidden transition-all">
             <button
               onClick={() => toggleSection("discipline")}
               className="w-full flex items-center justify-between p-5 text-left bg-zinc-950/60 hover:bg-zinc-900/80 transition"
             >
               <div>
-                <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">Am I protecting it?</span>
-                <h3 className="text-lg font-semibold text-white">Financial Discipline & Risk Guards</h3>
+                <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">How disciplined is my execution?</span>
+                <h3 className="text-lg font-semibold text-white">Financial Discipline & Execution Score</h3>
               </div>
               <ChevronIcon isOpen={openSections.discipline} />
             </button>
@@ -514,66 +595,15 @@ export default function Home() {
             )}
           </div>
 
-          {/* 5. Goals & Monthly Review */}
-          <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 overflow-hidden transition-all">
-            <button
-              onClick={() => toggleSection("goalsReview")}
-              className="w-full flex items-center justify-between p-5 text-left bg-zinc-950/60 hover:bg-zinc-900/80 transition"
-            >
-              <div>
-                <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">What am I building?</span>
-                <h3 className="text-lg font-semibold text-white">Goals Tracker & Monthly Accountability</h3>
-              </div>
-              <ChevronIcon isOpen={openSections.goalsReview} />
-            </button>
-            {openSections.goalsReview && (
-              <div className="p-6 border-t border-zinc-800/60 grid grid-cols-1 gap-6 lg:grid-cols-2">
-                <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 p-6">
-                  <h4 className="text-lg font-semibold text-white mb-4">Goals Progress</h4>
-                  {goals.map((goal) => (
-                    <div key={goal.id} className="space-y-2 mb-4">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-200">{goal.title}</span>
-                        <span className="font-mono text-white font-semibold">{goal.progress}%</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
-                        <div className="h-full bg-emerald-500 transition-all" style={{ width: `${goal.progress}%` }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {monthlyReviewData && <AthenaMonthlyReviewCard reviewData={monthlyReviewData} />}
-              </div>
-            )}
-          </div>
-
-          {/* 6. Financial Health & AI Intelligence */}
-          <div className="rounded-2xl border border-zinc-800/60 bg-zinc-900/40 overflow-hidden transition-all">
-            <button
-              onClick={() => toggleSection("healthIntelligence")}
-              className="w-full flex items-center justify-between p-5 text-left bg-zinc-950/60 hover:bg-zinc-900/80 transition"
-            >
-              <div>
-                <span className="font-mono text-[10px] text-emerald-400 uppercase tracking-widest">Is it healthy?</span>
-                <h3 className="text-lg font-semibold text-white">Recommended Action Queue</h3>
-              </div>
-              <ChevronIcon isOpen={openSections.healthIntelligence} />
-            </button>
-            {openSections.healthIntelligence && (
-              <div className="p-6 border-t border-zinc-800/60 grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {cfoData && <AthenaCFOCard insight={cfoData} />}
-                {actionData && <AthenaActionCard actions={actionData.actions} topAction={actionData.topAction} />}
-              </div>
-            )}
-          </div>
-
-          
-
         </div>
 
-        <footer className="mt-12 flex items-center justify-center gap-2 border-t border-zinc-800/40 pt-6 text-zinc-500 font-mono text-[10px] tracking-widest uppercase">
-          FIRE54 · Personal Wealth Management · All figures in INR
-        </footer>
+        {/* Bottom Monthly Review */}
+        <div className="mt-8 space-y-6">
+          {monthlyReviewData && <AthenaMonthlyReviewCard reviewData={monthlyReviewData} />}
+          {cfoData && <AthenaCFOCard insight={cfoData} />}
+          {actionData && <AthenaActionCard actions={actionData.actions} topAction={actionData.topAction} />}
+        </div>
+
       </main>
     </div>
   );
