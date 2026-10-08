@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  getPortfolio,
+  saveCurrentPortfolio,
+} from "@/lib/investments";
+
 import { useEffect, useMemo, useState } from "react";
 
 import {
@@ -482,6 +487,12 @@ export default function MonthlyFinancialStatementForm() {
     }));
   }
 
+    const portfolio = typeof window !== "undefined" ? getPortfolio() : [];
+  const homeLoan = portfolio.find(
+    (item) => item.type === "Liability" && (item.category === "Home Loan" || item.name.toLowerCase().includes("loan"))
+  );
+  const isHomeLoanActive = homeLoan ? (Number(homeLoan.currentValue ?? homeLoan.outstandingAmount ?? 0) > 0) : false;
+
   function handleSave() {
     const medicalInsurancePremium = goals
       .filter((goal) => goal.category === "Insurance" && goal.timeframe === "Long Term")
@@ -596,6 +607,18 @@ export default function MonthlyFinancialStatementForm() {
     };
 
     
+
+        const prepaymentAmount = Number(form.cashAllocation.homeLoanPrepayment || 0);
+    if (prepaymentAmount > 0 && isHomeLoanActive && homeLoan) {
+      const currentBal = Number(homeLoan.currentValue ?? homeLoan.outstandingAmount ?? 0);
+      const newBal = Math.max(0, currentBal - prepaymentAmount);
+      const updatedPortfolio = portfolio.map((item) =>
+        item.id === homeLoan.id
+          ? { ...item, currentValue: newBal, outstandingAmount: newBal }
+          : item
+      );
+      saveCurrentPortfolio(updatedPortfolio);
+    }
 
     saveFinancialStatement(
       statementToSave,
@@ -1311,11 +1334,21 @@ export default function MonthlyFinancialStatementForm() {
                 value={form.cashAllocation.savingsAccount}
                 onChange={(v) => updateCashAllocationField("savingsAccount", v)}
               />
-              <CurrencyInput
-                label="Home Loan Prepayment"
-                value={form.cashAllocation.homeLoanPrepayment}
-                onChange={(v) => updateCashAllocationField("homeLoanPrepayment", v)}
-              />
+              {isHomeLoanActive ? (
+                <CurrencyInput
+                  label="Home Loan Prepayment"
+                  value={form.cashAllocation.homeLoanPrepayment}
+                  onChange={(v) => updateCashAllocationField("homeLoanPrepayment", v)}
+                />
+              ) : (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3.5 text-xs text-emerald-400 flex items-center gap-2">
+                  <span className="text-base">🎉</span>
+                  <div>
+                    <p className="font-semibold text-white">Home Loan Fully Paid Off</p>
+                    <p className="text-[11px] text-emerald-400/80">No prepayment required this month.</p>
+                  </div>
+                </div>
+              )}
               <CurrencyInput
                 label="Monthly Expenses"
                 value={form.cashAllocation.monthlyExpenses}

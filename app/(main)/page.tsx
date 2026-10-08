@@ -1,5 +1,6 @@
 "use client";
 
+import { simulateLoanSchedule } from "@/lib/loans/loan-engine";
 import { buildDashboardViewModel } from "@/lib/dashboard/dashboard-view-model";
 import type { DashboardViewModel } from "@/lib/dashboard/dashboard.types";
 
