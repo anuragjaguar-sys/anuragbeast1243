@@ -268,7 +268,7 @@ export default function Home() {
       setCfoData(insight);
 
       // Decision and Actions
-      const plan = getDecisionPlan(profile, canonicalPortfolio);
+      const plan = (getDecisionPlan as any)(profile, canonicalPortfolio);
       const actions = generateActions(plan);
       const topAction = getTopPriorityAction(actions);
       setActionData({ actions, topAction });
@@ -299,7 +299,7 @@ export default function Home() {
     Number(profile?.income?.monthlySalary) ||
     Number((monthlyReviewData as any)?.currentSalary) ||
     Number(latestReview?.income?.salaryInHand) ||
-    Number(latestReview?.income?.salary) ||
+    Number((latestReview?.income as any)?.salary) ||
     150000;
 
   // 2. Identify active liabilities from canonical portfolio
@@ -309,7 +309,7 @@ export default function Home() {
   const homeLoan = liabilities.find(
     (item) => item.category === "Home Loan" || item.name.toLowerCase().includes("home") || item.name.toLowerCase().includes("loan")
   );
-  const homeLoanBalance = Number(homeLoan?.currentValue ?? homeLoan?.outstandingAmount ?? 0);
+  const homeLoanBalance = Number(homeLoan?.currentValue ?? (homeLoan as any)?.outstandingAmount ?? 0);
 
   // 3. Prepayment recorded this month from the monthly financial statement
   const monthlyPrepaymentThisMonth = Number(latestReview?.cashAllocation?.homeLoanPrepayment || 0);

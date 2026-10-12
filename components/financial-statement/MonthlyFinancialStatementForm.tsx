@@ -491,7 +491,7 @@ export default function MonthlyFinancialStatementForm() {
   const homeLoan = portfolio.find(
     (item) => item.type === "Liability" && (item.category === "Home Loan" || item.name.toLowerCase().includes("loan"))
   );
-  const isHomeLoanActive = homeLoan ? (Number(homeLoan.currentValue ?? homeLoan.outstandingAmount ?? 0) > 0) : false;
+  const isHomeLoanActive = homeLoan ? (Number((homeLoan as any).currentValue ?? (homeLoan as any).outstandingAmount ?? 0) > 0) : false;
 
   function handleSave() {
     const medicalInsurancePremium = goals
@@ -610,7 +610,7 @@ export default function MonthlyFinancialStatementForm() {
 
         const prepaymentAmount = Number(form.cashAllocation.homeLoanPrepayment || 0);
     if (prepaymentAmount > 0 && isHomeLoanActive && homeLoan) {
-      const currentBal = Number(homeLoan.currentValue ?? homeLoan.outstandingAmount ?? 0);
+      const currentBal = Number((homeLoan as any).currentValue ?? (homeLoan as any).outstandingAmount ?? 0);
       const newBal = Math.max(0, currentBal - prepaymentAmount);
       const updatedPortfolio = portfolio.map((item) =>
         item.id === homeLoan.id
