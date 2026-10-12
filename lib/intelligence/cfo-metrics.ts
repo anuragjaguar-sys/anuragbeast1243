@@ -68,6 +68,22 @@ export function calculateCFOMetrics(input: CFOMetricsInput): CFODeterministicMet
     if (item.type !== "Asset") return false;
     const cat = (item.category || "").toLowerCase().trim();
     const name = (item.name || "").toLowerCase().trim();
+
+    // NEVER treat real estate as liquid emergency cash
+    if (
+      name.includes("flat") ||
+      name.includes("dehradun") ||
+      name.includes("property") ||
+      name.includes("real estate") ||
+      name.includes("house") ||
+      name.includes("apartment") ||
+      name.includes("plot") ||
+      name.includes("land") ||
+      cat.includes("real estate") ||
+      cat.includes("property")
+    ) {
+      return false;
+    }
     return (
       liquidCategories.includes(cat) ||
       name.includes("emergency") ||

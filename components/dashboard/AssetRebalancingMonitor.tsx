@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 
 interface PortfolioItem {
@@ -18,10 +18,22 @@ interface AssetRebalancingMonitorProps {
 }
 
 export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalancingMonitorProps) {
-  // Target Liquid Allocation: 70% Equity / 25% Fixed Income & Debt / 5% Cash Buffer
   const [targetEquity, setTargetEquity] = useState(70);
   const [targetDebt, setTargetDebt] = useState(25);
   const targetCash = Math.max(0, 100 - targetEquity - targetDebt);
+
+  const [profileSavings, setProfileSavings] = useState(0);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("fire54_profile");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        const s = Number(parsed?.assets?.savings || parsed?.assets?.savingsAccount || parsed?.assets?.emergencyFund || 0);
+        if (s > 0) setProfileSavings(s);
+      }
+    } catch (e) {}
+  }, []);
 
   const assets = (portfolio || []).filter((item) => item.type === "Asset");
 
@@ -30,7 +42,6 @@ export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalan
     return isNaN(num) ? 0 : num;
   };
 
-  // Bucket classifications
   let equityVal = 0;
   let debtVal = 0;
   let cashVal = 0;
@@ -38,39 +49,78 @@ export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalan
   let goldVal = 0;
 
   assets.forEach((item) => {
-    const cat = (item.category || "").toLowerCase();
-    const name = (item.name || "").toLowerCase();
-    const cls = (item.assetClass || "").toLowerCase();
+    const cat = (item.category || "").toLowerCase().trim();
+    const name = (item.name || "").toLowerCase().trim();
+    const cls = (item.assetClass || "").toLowerCase().trim();
     const val = parseVal(item.currentValue ?? item.investedAmount ?? 0);
 
-    if (cat.includes("real estate") || cat.includes("property") || cls.includes("real estate")) {
+    // 1. STRICT REAL ESTATE CHECK (Matches name or category - catches Dehradun Flat even if category was savings)
+    const isRealEstate =
+      name.includes("flat") ||
+      name.includes("dehradun") ||
+      name.includes("property") ||
+      name.includes("real estate") ||
+      name.includes("house") ||
+      name.includes("apartment") ||
+      name.includes("plot") ||
+      name.includes("land") ||
+      cat.includes("real estate") ||
+      cat.includes("property") ||
+      cls.includes("real estate");
+
+    if (isRealEstate) {
       realEstateVal += val;
-    } else if (
+      return;
+    }
+
+    // 2. LIQUID CASH & SAVINGS CHECK
+    const isCash =
       cat.includes("savings") ||
       cat.includes("emergency") ||
       cat.includes("cash") ||
       cls.includes("cash") ||
       name.includes("savings") ||
-      name.includes("emergency")
-    ) {
+      name.includes("emergency") ||
+      name.includes("bank");
+
+    if (isCash) {
       cashVal += val;
-    } else if (
+      return;
+    }
+
+    // 3. SOVEREIGN DEBT & FIXED INCOME CHECK
+    const isDebt =
       cat.includes("ppf") ||
       cat.includes("epf") ||
       cat.includes("nps") ||
       cat.includes("fixed deposit") ||
       cat.includes("fd") ||
       cat.includes("debt") ||
-      cls.includes("debt")
-    ) {
+      cls.includes("debt") ||
+      name.includes("ppf") ||
+      name.includes("epf") ||
+      name.includes("nps") ||
+      name.includes("fd");
+
+    if (isDebt) {
       debtVal += val;
-    } else if (cat.includes("gold") || cls.includes("commodity")) {
-      goldVal += val;
-    } else {
-      // Default liquid investment to equity (Mutual funds, Stocks)
-      equityVal += val;
+      return;
     }
+
+    // 4. COMMODITIES / GOLD
+    if (cat.includes("gold") || cls.includes("commodity") || name.includes("gold")) {
+      goldVal += val;
+      return;
+    }
+
+    // 5. DEFAULT: EQUITY ENGINE (Mutual Funds, Stocks)
+    equityVal += val;
   });
+
+  // If cash from portfolio is 0, use profile liquid savings (e.g. ₹1.5L)
+  if (cashVal === 0 && profileSavings > 0) {
+    cashVal = profileSavings;
+  }
 
   const liquidTotal = equityVal + debtVal + cashVal + goldVal;
   const comprehensiveTotal = liquidTotal + realEstateVal;
@@ -79,9 +129,8 @@ export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalan
   const currentDebtPct = liquidTotal > 0 ? (debtVal / liquidTotal) * 100 : 0;
   const currentCashPct = liquidTotal > 0 ? (cashVal / liquidTotal) * 100 : 0;
 
-  // Drift calculation
   const equityDrift = currentEquityPct - targetEquity;
-  const isBalanced = Math.abs(equityDrift) <= 3;
+  const isBalanced = Math.abs(equityDrift) <= 5;
 
   const formatINR = (val: number) =>
     new Intl.NumberFormat("en-IN", {
@@ -89,10 +138,6 @@ export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalan
       currency: "INR",
       maximumFractionDigits: 0,
     }).format(val);
-
-  // Cash-flow rebalancing amount
-  const idealEquityAmount = (targetEquity / 100) * liquidTotal;
-  const rebalanceGap = idealEquityAmount - equityVal;
 
   return (
     <div className="rounded-3xl border border-zinc-800/80 bg-gradient-to-b from-zinc-900/90 to-zinc-950 p-6 md:p-8 shadow-2xl backdrop-blur-md mb-8">
@@ -108,7 +153,7 @@ export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalan
             Liquid Portfolio Asset Architecture
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Target: {targetEquity}% Equity | {targetDebt}% Debt & Sovereign | {targetCash}% Cash
+            Liquid Investable Corpus: {formatINR(liquidTotal)} | Total Net Worth: {formatINR(comprehensiveTotal)}
           </p>
         </div>
 
@@ -151,7 +196,7 @@ export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalan
           />
         </div>
 
-        <div className="flex justify-between items-center text-[10px] font-mono text-zinc-400 pt-1">
+        <div className="flex justify-between items-center text-[10px] font-mono text-zinc-400 pt-1 flex-wrap gap-2">
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
             Equity: {currentEquityPct.toFixed(1)}% ({formatINR(equityVal)})
@@ -193,12 +238,12 @@ export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalan
           <p className="text-[10px] text-zinc-500 mt-1">Savings & Bank Buffer</p>
         </div>
 
-        <div className="p-4 rounded-2xl bg-zinc-950/80 border border-purple-500/30">
+        <div className="p-4 rounded-2xl bg-zinc-950/80 border border-purple-500/40 shadow-inner">
           <p className="text-[11px] font-mono uppercase text-purple-400 font-semibold">
             4. Real Estate (Flat)
           </p>
           <p className="text-xl font-black text-white font-mono mt-1">{formatINR(realEstateVal)}</p>
-          <p className="text-[10px] text-zinc-500 mt-1">Illiquid Baseline</p>
+          <p className="text-[10px] text-zinc-500 mt-1">Illiquid Baseline Asset</p>
         </div>
       </div>
 
@@ -213,7 +258,7 @@ export default function AssetRebalancingMonitor({ portfolio = [] }: AssetRebalan
               "Portfolio is balanced within target thresholds. Maintain your normal monthly SIP run rate."
             ) : equityDrift < 0 ? (
               <>
-                Equity is underweight by {Math.abs(equityDrift).toFixed(1)}%. Tilt your next surplus
+                Equity is underweight by {Math.abs(equityDrift).toFixed(1)}% vs your 70% liquid target. Tilt your next surplus
                 deployments toward broad equity index funds without selling existing fixed debt.
               </>
             ) : (
