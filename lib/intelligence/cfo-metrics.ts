@@ -49,56 +49,114 @@ export function calculateCFOMetrics(input: CFOMetricsInput): CFODeterministicMet
   const activeRecoveryRisk = relapseCount > 0 && currentStreak < 30;
   const recentBehaviouralRelapse = relapseCount > 0 && currentStreak < 14;
 
-  const emergencyFundAsset = portfolio.find(
-    (item) => item.type === "Asset" && item.name === "Emergency Fund"
+  // 1. Recognize all liquid reserves (Savings Accounts, Emergency Funds, Liquid FDs, Cash)
+  const liquidCategories = [
+    "savings account",
+    "emergency fund",
+    "emergency",
+    "fixed deposit",
+    "fd",
+    "cash",
+    "liquid funds",
+    "liquid",
+  ];
+
+  const liquidPortfolioAssets = portfolio.filter((item) => {
+    if (item.type !== "Asset") return false;
+    const cat = (item.category || "").toLowerCase().trim();
+    const name = (item.name || "").toLowerCase().trim();
+    return (
+      liquidCategories.includes(cat) ||
+      name.includes("emergency") ||
+      name.includes("savings") ||
+      name.includes("bank") ||
+      name.includes("cash") ||
+      name.includes("fixed deposit") ||
+      name.includes("fd") ||
+      name.includes("liquid")
+    );
+  });
+
+  const portfolioLiquidValue = liquidPortfolioAssets.reduce(
+    (sum, item) => sum + (Number(item.currentValue) || 0),
+    0
   );
-  const emergencyFundValue = emergencyFundAsset?.currentValue ?? 0;
 
   const rawAssets = (profile.assets || {}) as Record<string, any>;
-  const emergencyFundTarget = Math.max(rawAssets.emergencyFund || 0, 0);
+  const profileEmergencyValue =
+    Number(rawAssets.emergencyFund) ||
+    Number(rawAssets.savings) ||
+    Number(rawAssets.savingsAccount) ||
+    Number(rawAssets.cash) ||
+    0;
 
-  const homeLoan = portfolio.find(
-    (item) => item.type === "Liability" && item.name === "Home Loan"
-  );
-  const homeLoanOutstanding = homeLoan?.currentValue ?? 0;
+  const emergencyFundValue =
+    portfolioLiquidValue > 0 ? portfolioLiquidValue : profileEmergencyValue;
+
+  // 2. Identify Home Loan liability flexibly
+  const homeLoan = portfolio.find((item) => {
+    if (item.type !== "Liability") return false;
+    const name = (item.name || "").toLowerCase();
+    const cat = (item.category || "").toLowerCase();
+    return name.includes("home loan") || cat.includes("home loan") || name.includes("mortgage");
+  });
+  const rawLiabilities = (profile.liabilities || {}) as Record<string, any>;
+  const homeLoanOutstanding =
+    homeLoan?.currentValue ?? Number(rawLiabilities.homeLoanOutstanding || 0);
   const hasHomeLoan = homeLoanOutstanding > 0;
 
   const totalAssets = portfolio
     .filter((item) => item.type === "Asset")
-    .reduce((sum, item) => sum + (item.currentValue ?? 0), 0);
+    .reduce((sum, item) => sum + (Number(item.currentValue) || 0), 0);
 
   const totalLiabilities = portfolio
     .filter((item) => item.type === "Liability")
-    .reduce((sum, item) => sum + (item.currentValue ?? 0), 0);
+    .reduce((sum, item) => sum + (Number(item.currentValue) || 0), 0);
 
   const calculatedNetWorth = totalAssets - totalLiabilities;
 
   const rawProfile = profile as Record<string, any>;
   const rawIncome = (profile.income || {}) as Record<string, any>;
 
-  const rules = calculateFinancialRules({
-    monthlyIncome: rawIncome.monthlySalary || rawIncome.salaryInHand || rawIncome.salary || 0,
-    monthlyExpenses:
+  const monthlyIncome =
+    Number(rawIncome.monthlySalary || rawIncome.salaryInHand || rawIncome.salary) || 0;
+
+  const monthlyExpenses =
+    Number(
       rawProfile.expense?.totalExpenses ||
       rawProfile.expenses?.totalExpenses ||
-      rawProfile.monthlyExpenses ||
-      50000,
-    monthlyInvestments: rawProfile.investments?.monthlySip || rawProfile.monthlyInvestment || 0,
+      rawProfile.monthlyExpenses
+    ) || 50000;
+
+  const targetMonths =
+    Number(rawProfile.goals?.emergencyFundMonths || rawProfile.emergencyFundMonths) || 6;
+
+  // 3. Target reserve is targetMonths * monthlyExpenses (default 6 months)
+  const defaultRequiredReserve = monthlyExpenses * targetMonths;
+  const userConfiguredTarget =
+    Number(rawProfile.goals?.emergencyFundTarget || rawAssets.emergencyFundTarget) || 0;
+  const emergencyFundTarget =
+    userConfiguredTarget > 0 ? userConfiguredTarget : defaultRequiredReserve;
+
+  const rules = calculateFinancialRules({
+    monthlyIncome,
+    monthlyExpenses,
+    monthlyInvestments:
+      Number(rawProfile.investments?.monthlySip || rawProfile.monthlyInvestment) || 0,
     emergencyFundCorpus: emergencyFundValue,
     totalDebt: homeLoanOutstanding,
-    liquidAssets: emergencyFundValue + (rawAssets.savings || rawAssets.cash || rawAssets.savingsAccount || 0),
+    liquidAssets: emergencyFundValue,
     netWorth: calculatedNetWorth,
   });
 
   const emergencyFundCoverage =
     emergencyFundTarget > 0
       ? emergencyFundValue / emergencyFundTarget
-      : rules.emergencyFundMonths / 6;
+      : targetMonths > 0
+      ? rules.emergencyFundMonths / targetMonths
+      : 1;
 
-  const emergencyFundBelowTarget =
-    emergencyFundTarget > 0
-      ? emergencyFundCoverage < 1
-      : !rules.isEmergencyFundAdequate;
+  const emergencyFundBelowTarget = emergencyFundValue < emergencyFundTarget;
 
   const corpusGap = Math.max(retirementGap?.corpusGap ?? 0, 0);
   const retirementGapExists = corpusGap > 0;
