@@ -52,6 +52,7 @@ import CapitalDeploymentModal from "@/components/dashboard/CapitalDeploymentModa
 import AthenaCFOCard from "@/components/dashboard/AthenaCFOCard";
 import AthenaActionCard from "@/components/dashboard/AthenaActionCard";
 import AthenaMonthlyReviewCard from "@/components/dashboard/AthenaMonthlyReviewCard";
+import AthenaTacticalBarometer from "@/components/dashboard/AthenaTacticalBarometer";
 
 function formatTodayDate(): string {
   return new Date().toLocaleDateString("en-IN", {
@@ -503,6 +504,11 @@ export default function Home() {
               )
             ))}
           </div>
+        </section>
+
+        {/* TIER 1.5: TACTICAL MARKET BAROMETER */}
+        <section className="mb-8">
+          <AthenaTacticalBarometer />
         </section>
 
         {/* Capital Deployment Velocity Modal */}
