@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 
-// Typical expense ratio benchmarks across Indian mutual fund categories
-const CATEGORY_BENCHMARKS: Record<string, { regularTER: number; directTER: number }> = {
-  flexicap: { regularTER: 1.70, directTER: 0.65 },
-  largecap: { regularTER: 1.65, directTER: 0.70 },
-  midcap: { regularTER: 1.85, directTER: 0.75 },
-  smallcap: { regularTER: 1.95, directTER: 0.70 },
-  index: { regularTER: 0.60, directTER: 0.15 },
-  hybrid: { regularTER: 1.60, directTER: 0.55 },
-  default: { regularTER: 1.75, directTER: 0.70 },
+const CATEGORY_BENCHMARKS: Record<string, { regularTER: number; directTER: number; avgCAGR: number }> = {
+  flexicap: { regularTER: 1.70, directTER: 0.65, avgCAGR: 14.5 },
+  largecap: { regularTER: 1.65, directTER: 0.70, avgCAGR: 12.8 },
+  midcap: { regularTER: 1.85, directTER: 0.75, avgCAGR: 16.2 },
+  smallcap: { regularTER: 1.95, directTER: 0.70, avgCAGR: 18.0 },
+  index: { regularTER: 0.60, directTER: 0.15, avgCAGR: 13.0 },
+  hybrid: { regularTER: 1.60, directTER: 0.55, avgCAGR: 11.5 },
+  default: { regularTER: 1.75, directTER: 0.70, avgCAGR: 13.5 },
 };
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const action = searchParams.get("action") || "search";
   const query = searchParams.get("q") || "";
 
   let benchmarks = CATEGORY_BENCHMARKS.default;
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     benchmarks = CATEGORY_BENCHMARKS.hybrid;
   }
 
-  // Query public Indian MF directory if query is provided
+  // 1. Search schemes
   let schemes = [];
   if (query.length >= 3) {
     try {
@@ -41,20 +41,14 @@ export async function GET(request: Request) {
       });
       if (res.ok) {
         const data = await res.json();
-        schemes = (data || []).slice(0, 8);
+        schemes = (data || []).slice(0, 10);
       }
-    } catch (e) {
-      // Graceful fallback to offline benchmarks
-    }
+    } catch (e) {}
   }
 
   return NextResponse.json({
     query,
     schemes,
-    benchmarks: {
-      regularTER: benchmarks.regularTER,
-      directTER: benchmarks.directTER,
-      terDifference: Number((benchmarks.regularTER - benchmarks.directTER).toFixed(2)),
-    },
+    benchmarks,
   });
 }
