@@ -1,5 +1,6 @@
-import AssetRebalancingMonitor from "@/components/dashboard/AssetRebalancingMonitor";
 "use client";
+
+import AssetRebalancingMonitor from "@/components/dashboard/AssetRebalancingMonitor";
 
 import Link from "next/link";
 import { buildDashboardViewModel } from "@/lib/dashboard/dashboard-view-model";
@@ -510,7 +511,7 @@ export default function Home() {
         {/* TIER 1.5: TACTICAL MARKET BAROMETER */}
         <section className="mb-8">
           <AthenaTacticalBarometer />
-        <AssetRebalancingMonitor portfolio={portfolio} />
+        <AssetRebalancingMonitor portfolio={portfolioItems} />
         </section>
 
         {/* Capital Deployment Velocity Modal */}
