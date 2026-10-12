@@ -8,6 +8,8 @@ export type PortfolioItemSummary = {
   name: string;
   category?: string;
   currentValue?: number;
+  outstandingAmount?: number;
+  investedAmount?: number;
 };
 
 export type BehaviourSummaryInput = {
@@ -49,7 +51,7 @@ export function calculateCFOMetrics(input: CFOMetricsInput): CFODeterministicMet
   const activeRecoveryRisk = relapseCount > 0 && currentStreak < 30;
   const recentBehaviouralRelapse = relapseCount > 0 && currentStreak < 14;
 
-  // 1. Recognize all liquid reserves (Savings Accounts, Emergency Funds, Liquid FDs, Cash)
+  // 1. Identify all liquid emergency reserves (Savings Account, Cash, Emergency Fund, Liquid FDs)
   const liquidCategories = [
     "savings account",
     "emergency fund",
@@ -59,6 +61,7 @@ export function calculateCFOMetrics(input: CFOMetricsInput): CFODeterministicMet
     "cash",
     "liquid funds",
     "liquid",
+    "bank account",
   ];
 
   const liquidPortfolioAssets = portfolio.filter((item) => {
@@ -77,10 +80,10 @@ export function calculateCFOMetrics(input: CFOMetricsInput): CFODeterministicMet
     );
   });
 
-  const portfolioLiquidValue = liquidPortfolioAssets.reduce(
-    (sum, item) => sum + (Number(item.currentValue) || 0),
-    0
-  );
+  const portfolioLiquidValue = liquidPortfolioAssets.reduce((sum, item) => {
+    const val = Number(item.currentValue ?? item.investedAmount ?? 0);
+    return sum + (isNaN(val) ? 0 : val);
+  }, 0);
 
   const rawAssets = (profile.assets || {}) as Record<string, any>;
   const profileEmergencyValue =
@@ -93,25 +96,39 @@ export function calculateCFOMetrics(input: CFOMetricsInput): CFODeterministicMet
   const emergencyFundValue =
     portfolioLiquidValue > 0 ? portfolioLiquidValue : profileEmergencyValue;
 
-  // 2. Identify Home Loan liability flexibly
+  // 2. Identify Home Loan liability flexibly by name or category
   const homeLoan = portfolio.find((item) => {
     if (item.type !== "Liability") return false;
     const name = (item.name || "").toLowerCase();
     const cat = (item.category || "").toLowerCase();
-    return name.includes("home loan") || cat.includes("home loan") || name.includes("mortgage");
+    return (
+      name.includes("home loan") ||
+      cat.includes("home loan") ||
+      name.includes("mortgage") ||
+      cat.includes("mortgage")
+    );
   });
+
   const rawLiabilities = (profile.liabilities || {}) as Record<string, any>;
   const homeLoanOutstanding =
-    homeLoan?.currentValue ?? Number(rawLiabilities.homeLoanOutstanding || 0);
+    Number(homeLoan?.currentValue ?? homeLoan?.outstandingAmount ?? 0) ||
+    Number(rawLiabilities.homeLoanOutstanding || 0);
+
   const hasHomeLoan = homeLoanOutstanding > 0;
 
   const totalAssets = portfolio
     .filter((item) => item.type === "Asset")
-    .reduce((sum, item) => sum + (Number(item.currentValue) || 0), 0);
+    .reduce((sum, item) => {
+      const val = Number(item.currentValue ?? item.investedAmount ?? 0);
+      return sum + (isNaN(val) ? 0 : val);
+    }, 0);
 
   const totalLiabilities = portfolio
     .filter((item) => item.type === "Liability")
-    .reduce((sum, item) => sum + (Number(item.currentValue) || 0), 0);
+    .reduce((sum, item) => {
+      const val = Number(item.currentValue ?? item.outstandingAmount ?? 0);
+      return sum + (isNaN(val) ? 0 : val);
+    }, 0);
 
   const calculatedNetWorth = totalAssets - totalLiabilities;
 
@@ -131,7 +148,7 @@ export function calculateCFOMetrics(input: CFOMetricsInput): CFODeterministicMet
   const targetMonths =
     Number(rawProfile.goals?.emergencyFundMonths || rawProfile.emergencyFundMonths) || 6;
 
-  // 3. Target reserve is targetMonths * monthlyExpenses (default 6 months)
+  // 3. Dynamic required reserve: monthlyExpenses * targetMonths (default 6 months)
   const defaultRequiredReserve = monthlyExpenses * targetMonths;
   const userConfiguredTarget =
     Number(rawProfile.goals?.emergencyFundTarget || rawAssets.emergencyFundTarget) || 0;
