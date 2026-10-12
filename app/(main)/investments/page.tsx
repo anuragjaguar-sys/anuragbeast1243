@@ -1,5 +1,7 @@
 "use client";
 
+import DirectVsRegularMigrator from "@/components/investments/DirectVsRegularMigrator";
+
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import InvestmentPortfolioCard from "@/components/dashboard/InvestmentPortfolioCard";
@@ -21,6 +23,7 @@ function formatINR(val: number): string {
 }
 
 export default function InvestmentsPage() {
+  const [activeTab, setActiveTab] = useState<"overview" | "direct_switch">("direct_switch");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [summaryData, setSummaryData] = useState<{
     summary: {
@@ -87,6 +90,7 @@ export default function InvestmentsPage() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-8 p-6 md:p-8">
+      {activeTab === "direct_switch" && <DirectVsRegularMigrator />}
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -97,6 +101,29 @@ export default function InvestmentsPage() {
           <p className="mt-1 text-sm text-zinc-400">
             Real-time asset performance, allocation distribution, and systematic growth tracking.
           </p>
+        </div>
+
+                <div className="flex items-center gap-2 p-1 rounded-2xl bg-zinc-900 border border-zinc-800">
+          <button
+            onClick={() => setActiveTab("direct_switch")}
+            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all ${
+              activeTab === "direct_switch"
+                ? "bg-emerald-500 text-zinc-950 shadow-md"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            ⚡ Direct vs Indirect Converter
+          </button>
+          <button
+            onClick={() => setActiveTab("overview")}
+            className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all ${
+              activeTab === "overview"
+                ? "bg-emerald-500 text-zinc-950 shadow-md"
+                : "text-zinc-400 hover:text-white"
+            }`}
+          >
+            📊 Portfolio Analytics
+          </button>
         </div>
 
         <div className="flex items-center gap-3">
