@@ -12,6 +12,7 @@ const navItems = [
   { href: "/profile", label: "Financial Profile", icon: "👤" },
   { href: "/after-54", label: "Life After 54", icon: "🌅" },
   { href: "/portfolio", label: "Portfolio", icon: "💼" },
+  { href: "/investments", label: "Investments", icon: "📈" },
   { href: "/goals", label: "Goals", icon: "🎯" },
   { href: "/wealth-allocation", label: "Wealth Allocation", icon: "💳" },
   { href: "/reports", label: "Reports", icon: "📊" },
