@@ -5,6 +5,7 @@ import Link from "next/link";
 import PortfolioSummary from "@/components/portfolio/PortfolioSummary";
 import PortfolioTable from "@/components/portfolio/PortfolioTable";
 import PortfolioForm from "@/components/portfolio/PortfolioForm";
+import MutualFundSubHead from "@/components/portfolio/MutualFundSubHead";
 
 import {
   Asset,
@@ -95,6 +96,14 @@ export default function PortfolioPage() {
       </div>
 
       <PortfolioSummary portfolio={portfolio} />
+
+      <MutualFundSubHead
+        portfolio={portfolio}
+        onUpdatePortfolio={(updated) => {
+          setPortfolio(updated);
+          saveCurrentPortfolio(updated);
+        }}
+      />
 
       {showForm && (
         <PortfolioForm
