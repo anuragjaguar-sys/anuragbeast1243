@@ -297,11 +297,15 @@ export default function MonthlyFinancialStatementForm() {
       reviews.find((entry) => entry.monthKey === initialMonthKey) ??
       reviews.find((entry) => entry.monthKey < initialMonthKey);
     const portfolio = loadPortfolio();
+    const isNotRealEstate = (item: PortfolioItem) => {
+      const n = (item.name || "").toLowerCase();
+      return !n.includes("flat") && !n.includes("dehradun") && !n.includes("property") && !n.includes("house");
+    };
     const runningAccounts = portfolio.filter(
-      (item) => item.type === "Asset" && item.category === "Savings Account"
+      (item) => item.type === "Asset" && item.category === "Savings Account" && isNotRealEstate(item)
     );
     const emergencyAccounts = portfolio.filter(
-      (item) => item.type === "Asset" && item.category === "Emergency Fund"
+      (item) => item.type === "Asset" && item.category === "Emergency Fund" && isNotRealEstate(item)
     );
 
     if (existing && "version" in existing && existing.version === 2) {
@@ -334,11 +338,15 @@ export default function MonthlyFinancialStatementForm() {
 
   function refreshAccountBalances() {
     const portfolio = loadPortfolio();
+    const isNotRealEstate = (item: PortfolioItem) => {
+      const n = (item.name || "").toLowerCase();
+      return !n.includes("flat") && !n.includes("dehradun") && !n.includes("property") && !n.includes("house");
+    };
     const runningAccounts = portfolio.filter(
-      (item) => item.type === "Asset" && item.category === "Savings Account"
+      (item) => item.type === "Asset" && item.category === "Savings Account" && isNotRealEstate(item)
     );
     const emergencyAccounts = portfolio.filter(
-      (item) => item.type === "Asset" && item.category === "Emergency Fund"
+      (item) => item.type === "Asset" && item.category === "Emergency Fund" && isNotRealEstate(item)
     );
 
     setAccountReview((previous) =>
@@ -571,11 +579,15 @@ export default function MonthlyFinancialStatementForm() {
     saveGoalLedger(updatedLedger);
 
     const portfolioAtSave = loadPortfolio();
+    const isNotRealEstate = (item: PortfolioItem) => {
+      const n = (item.name || "").toLowerCase();
+      return !n.includes("flat") && !n.includes("dehradun") && !n.includes("property") && !n.includes("house");
+    };
     const runningAccounts = portfolioAtSave.filter(
-      (item) => item.type === "Asset" && item.category === "Savings Account"
+      (item) => item.type === "Asset" && item.category === "Savings Account" && isNotRealEstate(item)
     );
     const emergencyAccounts = portfolioAtSave.filter(
-      (item) => item.type === "Asset" && item.category === "Emergency Fund"
+      (item) => item.type === "Asset" && item.category === "Emergency Fund" && isNotRealEstate(item)
     );
     const runningBalance =
       runningAccounts.length > 0
@@ -586,6 +598,11 @@ export default function MonthlyFinancialStatementForm() {
         ? emergencyAccounts.reduce((total, account) => total + account.currentValue, 0)
         : null;
 
+    const finalSavingsStr =
+      runningBalance === null ? form.assets.savingsAccount : String(runningBalance);
+    const finalEmergencyStr =
+      emergencyBalance === null ? form.assets.emergencyFund : String(emergencyBalance);
+
     const statementToSave: MonthlyFinancialStatement = {
       ...form,
       sipStepUp:
@@ -595,29 +612,68 @@ export default function MonthlyFinancialStatementForm() {
       sipAnnualReview,
       assets: {
         ...form.assets,
-        savingsAccount:
-          runningBalance === null
-            ? form.assets.savingsAccount
-            : String(runningBalance),
-        emergencyFund:
-          emergencyBalance === null
-            ? form.assets.emergencyFund
-            : String(emergencyBalance),
+        savingsAccount: finalSavingsStr,
+        emergencyFund: finalEmergencyStr,
       },
     };
 
-    
+    // Sync Running Account & Emergency Account into Portfolio if missing
+    let syncedPortfolio = [...portfolioAtSave];
+    let portfolioModified = false;
 
-        const prepaymentAmount = Number(form.cashAllocation.homeLoanPrepayment || 0);
+    const enteredRunningVal =
+      parseAmount(finalSavingsStr) || parseAmount(form.cashAllocation.savingsAccount || "");
+    const enteredEmergencyVal =
+      parseAmount(finalEmergencyStr) || parseAmount(form.cashAllocation.emergencyFund || "");
+
+    if (runningAccounts.length === 0 && enteredRunningVal > 0) {
+      syncedPortfolio.push({
+        id: "running-savings-account",
+        type: "Asset",
+        name: "Running Account (Savings)",
+        category: "Savings Account",
+        assetClass: "Cash",
+        currentValue: enteredRunningVal,
+        investedAmount: enteredRunningVal,
+        monthlyContribution: parseAmount(form.cashAllocation.savingsAccount || ""),
+        expectedReturn: 3.5,
+        goal: "Other",
+        riskLevel: "Low",
+      });
+      portfolioModified = true;
+    }
+
+    if (emergencyAccounts.length === 0 && enteredEmergencyVal > 0) {
+      syncedPortfolio.push({
+        id: "emergency-reserve-account",
+        type: "Asset",
+        name: "Emergency Account",
+        category: "Emergency Fund",
+        assetClass: "Cash",
+        currentValue: enteredEmergencyVal,
+        investedAmount: enteredEmergencyVal,
+        monthlyContribution: parseAmount(form.cashAllocation.emergencyFund || ""),
+        expectedReturn: 6.0,
+        goal: "Emergency Fund",
+        riskLevel: "Low",
+      });
+      portfolioModified = true;
+    }
+
+    const prepaymentAmount = Number(form.cashAllocation.homeLoanPrepayment || 0);
     if (prepaymentAmount > 0 && isHomeLoanActive && homeLoan) {
       const currentBal = Number((homeLoan as any).currentValue ?? (homeLoan as any).outstandingAmount ?? 0);
       const newBal = Math.max(0, currentBal - prepaymentAmount);
-      const updatedPortfolio = portfolio.map((item) =>
+      syncedPortfolio = syncedPortfolio.map((item) =>
         item.id === homeLoan.id
-          ? { ...item, currentValue: newBal, outstandingAmount: newBal }
+          ? ({ ...item, currentValue: newBal, outstandingAmount: newBal } as PortfolioItem)
           : item
       );
-      saveCurrentPortfolio(updatedPortfolio);
+      portfolioModified = true;
+    }
+
+    if (portfolioModified) {
+      saveCurrentPortfolio(syncedPortfolio);
     }
 
     saveFinancialStatement(

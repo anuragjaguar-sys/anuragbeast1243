@@ -98,18 +98,20 @@ export default function ProfilePage() {
 
     const isFirstSave = !isPortfolioInitialized;
 
-    // Save to the database
-    await updateFinancialProfile(profile);
+    try {
+      await updateFinancialProfile(profile);
 
-    if (isFirstSave) {
-      await initializePortfolioFromProfile();
-      setIsPortfolioInitialized(true);
+      if (isFirstSave) {
+        await initializePortfolioFromProfile();
+        setIsPortfolioInitialized(true);
+      }
+
+      await refreshProfile();
+      alert("✅ Financial Profile Saved Successfully");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to save your profile.";
+      alert(`⚠️ ${message}`);
     }
-
-    // 👈 4. Tell the Doorman to fetch the newly saved data so the rest of the app updates!
-    await refreshProfile();
-
-    alert("✅ Financial Profile Saved Successfully");
   }
 
   // 👈 5. Block the UI if either the global context OR the local state is loading
@@ -365,6 +367,28 @@ export default function ProfilePage() {
             label="Emergency Fund (Months)"
             value={profile.goals.emergencyFundMonths}
             onChange={(v) => updateNumber("goals", "emergencyFundMonths", v)}
+          />
+
+          <Input
+            label="Emergency Fund Target (₹)"
+            value={profile.goals.emergencyFundTarget ?? 0}
+            onChange={(v) => updateNumber("goals", "emergencyFundTarget", v)}
+          />
+
+          <Input
+            label="Financial Independence Target (₹)"
+            value={profile.goals.financialIndependenceTarget ?? 0}
+            onChange={(v) =>
+              updateNumber("goals", "financialIndependenceTarget", v)
+            }
+          />
+
+          <Input
+            label="Original Home Loan Amount (₹)"
+            value={profile.goals.homeLoanOriginalAmount ?? 0}
+            onChange={(v) =>
+              updateNumber("goals", "homeLoanOriginalAmount", v)
+            }
           />
         </div>
       </div>

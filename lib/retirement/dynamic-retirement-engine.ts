@@ -7,6 +7,8 @@ export interface DynamicRetirementInputs {
   currentEPF: number;
   currentNPS: number;
   currentProperty: number;
+  currentSavingsAccount?: number;
+  currentEmergencyFund?: number;
   activeMonthlySIP: number;
   stepUpPercent: number;
   loanPrincipal: number;
@@ -28,6 +30,8 @@ export interface AssetBreakdownAt54 {
   epfValue: number;
   npsValue: number;
   propertyValue: number;
+  savingsAccountValue: number;
+  emergencyFundValue: number;
   liquidCorpus: number;
   totalNetWorth: number;
 }
@@ -61,6 +65,8 @@ export function calculateDynamicRetirementCorpus(
     currentEPF = 0,
     currentNPS = 0,
     currentProperty = 4500000,
+    currentSavingsAccount = 0,
+    currentEmergencyFund = 0,
     activeMonthlySIP,
     stepUpPercent,
     loanPrincipal,
@@ -110,11 +116,12 @@ export function calculateDynamicRetirementCorpus(
 
     let effectiveMonthlySIP = currentSIP;
     if (!isLoanActive) {
-      effectiveMonthlySIP += (baseEMI + monthlyPrepayment);
+      effectiveMonthlySIP += baseEMI + monthlyPrepayment;
     }
 
     // Mid-month convention for newly added SIP capital
-    equityCorpus = equityCorpus * (1 + monthlyEquityRate) + effectiveMonthlySIP * (1 + monthlyEquityRate / 2);
+    equityCorpus =
+      equityCorpus * (1 + monthlyEquityRate) + effectiveMonthlySIP * (1 + monthlyEquityRate / 2);
 
     if (m % 12 === 0 || m === totalMonths) {
       const yearIndex = Math.ceil(m / 12);
@@ -133,13 +140,28 @@ export function calculateDynamicRetirementCorpus(
   const debtFreeMonths = debtFreeMonthIndex > 0 ? debtFreeMonthIndex : 23;
   const debtFreeAge = Number((currentAge + debtFreeMonths / 12).toFixed(1));
 
-  const directStocksAt54 = Math.round(currentStocks * Math.pow(1 + equityReturnRate / 100, totalYears));
+  const directStocksAt54 = Math.round(
+    currentStocks * Math.pow(1 + equityReturnRate / 100, totalYears)
+  );
   const ppfAt54 = Math.round(currentPPF * Math.pow(1 + ppfReturnRate / 100, totalYears));
   const epfAt54 = Math.round(currentEPF * Math.pow(1 + epfReturnRate / 100, totalYears));
   const npsAt54 = Math.round(currentNPS * Math.pow(1 + npsReturnRate / 100, totalYears));
-  const propertyAt54 = Math.round(currentProperty * Math.pow(1 + propertyReturnRate / 100, totalYears));
+  const propertyAt54 = Math.round(
+    currentProperty * Math.pow(1 + propertyReturnRate / 100, totalYears)
+  );
 
-  const liquidCorpus = Math.round(equityCorpus) + directStocksAt54 + ppfAt54 + epfAt54 + npsAt54;
+  // Running Account (3.5% savings yield) & Emergency Account (6% liquid/sweep yield)
+  const savingsAt54 = Math.round(currentSavingsAccount * Math.pow(1 + 0.035, totalYears));
+  const emergencyAt54 = Math.round(currentEmergencyFund * Math.pow(1 + 0.06, totalYears));
+
+  const liquidCorpus =
+    Math.round(equityCorpus) +
+    directStocksAt54 +
+    ppfAt54 +
+    epfAt54 +
+    npsAt54 +
+    savingsAt54 +
+    emergencyAt54;
   const totalNetWorth = liquidCorpus + propertyAt54;
 
   const assetBreakdown: AssetBreakdownAt54 = {
@@ -149,6 +171,8 @@ export function calculateDynamicRetirementCorpus(
     epfValue: epfAt54,
     npsValue: npsAt54,
     propertyValue: propertyAt54,
+    savingsAccountValue: savingsAt54,
+    emergencyFundValue: emergencyAt54,
     liquidCorpus,
     totalNetWorth,
   };

@@ -8,7 +8,9 @@ const LEGACY_KEY = "athena-portfolio";
 export function loadPortfolio(): PortfolioItem[] {
   // Check primary unified key
   const portfolio = StorageManager.get<PortfolioItem[]>(PRIMARY_KEY, []);
-  if (Array.isArray(portfolio) && portfolio.length > 0) {
+  // An empty array is an intentional, synced deletion marker. It must not
+  // fall through to stale legacy data and resurrect removed holdings.
+  if (StorageManager.has(PRIMARY_KEY) && Array.isArray(portfolio)) {
     return portfolio;
   }
 
@@ -36,7 +38,6 @@ export function savePortfolio(portfolio: PortfolioItem[]): void {
 }
 
 export function clearPortfolio(): void {
-  StorageManager.remove(PRIMARY_KEY);
-  StorageManager.remove("portfolio");
+  savePortfolio([]);
   StorageManager.remove(LEGACY_KEY);
 }

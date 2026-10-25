@@ -70,6 +70,8 @@ export default function CFOExecutivePlaybookCard({ statement }: { statement?: an
       currentEPF: assets.epf,
       currentNPS: assets.nps,
       currentProperty: assets.property,
+      currentSavingsAccount: assets.savingsAccount,
+      currentEmergencyFund: assets.emergencyFund,
       activeMonthlySIP: activeSIP,
       stepUpPercent,
       loanPrincipal: assets.homeLoanPrincipal,
@@ -95,6 +97,8 @@ export default function CFOExecutivePlaybookCard({ statement }: { statement?: an
       currentEPF: assets.epf,
       currentNPS: assets.nps,
       currentProperty: assets.property,
+      currentSavingsAccount: assets.savingsAccount,
+      currentEmergencyFund: assets.emergencyFund,
       activeMonthlySIP: baselineSIP,
       stepUpPercent: 0,
       loanPrincipal: assets.homeLoanPrincipal,
@@ -505,6 +509,30 @@ export default function CFOExecutivePlaybookCard({ statement }: { statement?: an
                     </div>
                     <p className="text-2xl font-black text-white font-mono mt-2">{formatINR(breakdown.propertyValue)}</p>
                     <p className="text-[11px] text-zinc-400 mt-1">Base value {formatINR(assets.property)} flat compounded to age 54</p>
+                  </div>
+                )}
+
+                {/* 7. Running Account (Savings Account) */}
+                {assets.savingsAccount > 0 && (
+                  <div className="p-4 rounded-2xl bg-zinc-950 border border-cyan-500/30">
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs font-mono uppercase text-cyan-400 font-bold">Running Account (Savings)</span>
+                      <span className="text-[10px] font-mono bg-cyan-500/10 text-cyan-400 px-2 py-0.5 rounded">3.5% Yield</span>
+                    </div>
+                    <p className="text-2xl font-black text-white font-mono mt-2">{formatINR(breakdown.savingsAccountValue)}</p>
+                    <p className="text-[11px] text-zinc-400 mt-1">Current {formatINR(assets.savingsAccount)} running bank balance</p>
+                  </div>
+                )}
+
+                {/* 8. Emergency Account (Emergency Fund) */}
+                {assets.emergencyFund > 0 && (
+                  <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-500/30">
+                    <div className="flex justify-between items-start">
+                      <span className="text-xs font-mono uppercase text-amber-400 font-bold">Emergency Account</span>
+                      <span className="text-[10px] font-mono bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded">6.0% Liquid</span>
+                    </div>
+                    <p className="text-2xl font-black text-white font-mono mt-2">{formatINR(breakdown.emergencyFundValue)}</p>
+                    <p className="text-[11px] text-zinc-400 mt-1">Current {formatINR(assets.emergencyFund)} emergency reserve</p>
                   </div>
                 )}
               </div>

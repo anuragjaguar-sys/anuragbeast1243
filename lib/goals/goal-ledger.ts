@@ -22,7 +22,7 @@ const LEGACY_KEY = "athena-goal-ledger";
 
 export function loadGoalLedger(): GoalLedgerEntry[] {
   const ledger = StorageManager.get<GoalLedgerEntry[]>(PRIMARY_KEY, []);
-  if (Array.isArray(ledger) && ledger.length > 0) {
+  if (StorageManager.has(PRIMARY_KEY) && Array.isArray(ledger)) {
     return ledger;
   }
 

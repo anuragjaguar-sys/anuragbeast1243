@@ -74,6 +74,17 @@ export function ProfileProvider({
     return () => clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    const handleRemoteProfileUpdate = () => {
+      void fetchProfile();
+    };
+
+    window.addEventListener("fire54_remote_data_updated", handleRemoteProfileUpdate);
+    return () => {
+      window.removeEventListener("fire54_remote_data_updated", handleRemoteProfileUpdate);
+    };
+  }, []);
+
   return (
     <ProfileContext.Provider
       value={{

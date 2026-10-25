@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateEmergencyFundProgressFromStatement,
   calculateMonthlyIncome,
   calculateTotalExpenses,
   formatINR,
@@ -28,5 +29,13 @@ describe("monthly financial statement amounts", () => {
     statement.expenses.household.messBill = "4500";
 
     expect(calculateTotalExpenses(statement)).toBe(4500);
+  });
+
+  it("uses a supplied emergency-fund target instead of a fixed amount", () => {
+    const statement = structuredClone(INITIAL_MONTHLY_FINANCIAL_STATEMENT);
+    statement.assets.emergencyFund = "150000";
+
+    expect(calculateEmergencyFundProgressFromStatement(statement, 300000)).toBe(50);
+    expect(calculateEmergencyFundProgressFromStatement(statement, 0)).toBe(0);
   });
 });

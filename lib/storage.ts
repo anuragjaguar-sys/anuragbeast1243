@@ -1,4 +1,5 @@
 import { StorageManager } from "@/lib/core/storage-manager";
+import { CloudSyncService } from "@/lib/core/sync-service";
 import {
   getMonthKey,
   getMonthLabel,
@@ -208,6 +209,7 @@ function readStore(): MonthlyReviewsStore {
 
 function writeStore(store: MonthlyReviewsStore): void {
   StorageManager.set(STORAGE_KEY, store);
+  void CloudSyncService.pushStore("monthlyReviews", store);
 }
 
 /** Load a monthly review by key. Defaults to the current month. */
@@ -284,5 +286,6 @@ export function deleteMonthlyReview(monthKey: string): void {
 /** Clear all stored monthly reviews. */
 export function clearAllMonthlyReviews(): void {
   if (!isBrowser()) return;
-  localStorage.removeItem(STORAGE_KEY);
+  // Keep an explicit empty store so the deletion syncs to other devices.
+  writeStore({});
 }

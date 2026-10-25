@@ -32,6 +32,17 @@ export class StorageManager {
     }
   }
 
+  public static has(key: StorageKey | string): boolean {
+    if (!this.isClient()) return false;
+
+    try {
+      return window.localStorage.getItem(key) !== null;
+    } catch (error) {
+      console.warn(`[StorageManager] Error checking key "${key}":`, error);
+      return false;
+    }
+  }
+
   public static set<T>(key: StorageKey | string, value: T): boolean {
     if (!this.isClient()) return false;
 

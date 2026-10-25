@@ -27,7 +27,7 @@ import {
   getTotalLiabilities,
 } from "@/lib/investments";
 import { simulateLoanSchedule } from "@/lib/loans/loan-engine";
-import { getWealthMetrics } from "@/lib/wealth/wealth-engine";
+import { getWealthMetrics, getReconciledPortfolio } from "@/lib/wealth/wealth-engine";
 import { 
   getRetirementProjection, 
   generateRetirementScenarios,
@@ -146,7 +146,7 @@ export default function Home() {
     const loadData = () => {
       const review = loadMonthlyReview();
       const financialMetrics = getFinancialMetrics();
-      const canonicalPortfolio = getPortfolio();
+      const canonicalPortfolio = getReconciledPortfolio(getPortfolio());
       setPortfolioItems(canonicalPortfolio);
 
       if (financialMetrics) {
@@ -155,7 +155,7 @@ export default function Home() {
         // 1. Calculate Wealth Data
         const assets = getAssets(canonicalPortfolio);
         const liabilities = getLiabilities(canonicalPortfolio);
-        const wealthMetrics = getWealthMetrics();
+        const wealthMetrics = getWealthMetrics(canonicalPortfolio);
         setWealthData({ metrics: wealthMetrics, assets, liabilities });
 
         // 2. Calculate Portfolio Data
@@ -164,11 +164,7 @@ export default function Home() {
         _setPortfolioData({ summary, insights });
 
         // 3. Calculate Health Data
-        const emergencyAsset = canonicalPortfolio.find(
-          (item) => item.type === "Asset" && item.name === "Emergency Fund"
-        );
-        const emergencyCurrent = emergencyAsset?.currentValue ?? 0;
-        const emergencyProgress = Math.min(Math.round((emergencyCurrent / 600000) * 100), 100);
+        const emergencyProgress = financialMetrics.emergencyFundProgress;
         
         let score = null;
         if (review) {
@@ -306,7 +302,7 @@ export default function Home() {
     150000;
 
   // 2. Identify active liabilities from canonical portfolio
-  const canonicalPortfolio = getPortfolio();
+  const canonicalPortfolio = getReconciledPortfolio(getPortfolio());
   const liabilities = getLiabilities(canonicalPortfolio);
   const totalDebt = getTotalLiabilities(canonicalPortfolio);
   const homeLoan = liabilities.find(

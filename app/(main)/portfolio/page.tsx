@@ -6,6 +6,7 @@ import PortfolioSummary from "@/components/portfolio/PortfolioSummary";
 import PortfolioTable from "@/components/portfolio/PortfolioTable";
 import PortfolioForm from "@/components/portfolio/PortfolioForm";
 import MutualFundSubHead from "@/components/portfolio/MutualFundSubHead";
+import { getReconciledPortfolio } from "@/lib/wealth/wealth-engine";
 
 import {
   Asset,
@@ -20,11 +21,15 @@ export default function PortfolioPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<PortfolioItem | null>(null);
 
-  // Load on mount and re-render live whenever another device makes an update
+  // Load on mount and reconcile Running & Emergency accounts into portfolio if missing
   useEffect(() => {
     const loadItems = () => {
-      const loaded = getPortfolio();
-      setPortfolio(loaded);
+      const raw = getPortfolio();
+      const reconciled = getReconciledPortfolio(raw);
+      setPortfolio(reconciled);
+      if (reconciled.length !== raw.length) {
+        saveCurrentPortfolio(reconciled);
+      }
     };
 
     loadItems();
@@ -39,7 +44,7 @@ export default function PortfolioPage() {
   }, []);
 
   const handleSave = (item: Asset | Liability) => {
-    const currentItems = getPortfolio();
+    const currentItems = getReconciledPortfolio(getPortfolio());
     let updatedPortfolio: PortfolioItem[];
 
     if (editingItem) {
@@ -57,7 +62,7 @@ export default function PortfolioPage() {
   };
 
   const handleDelete = (id: string) => {
-    const currentItems = getPortfolio();
+    const currentItems = getReconciledPortfolio(getPortfolio());
     const updatedPortfolio = currentItems.filter((item) => item.id !== id);
     setPortfolio(updatedPortfolio);
     saveCurrentPortfolio(updatedPortfolio);
@@ -80,7 +85,9 @@ export default function PortfolioPage() {
           </Link>
           <div>
             <h1 className="text-4xl font-bold text-white">Portfolio</h1>
-            <p className="mt-2 text-zinc-400">Manage your Assets & Liabilities</p>
+            <p className="mt-2 text-zinc-400">
+              Single Source of Truth for Assets, Mutual Funds, Running &amp; Emergency Accounts, and Liabilities
+            </p>
           </div>
         </div>
 

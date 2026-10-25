@@ -554,9 +554,8 @@ return (
       className="w-full rounded-lg border border-zinc-700 bg-zinc-800 p-3 text-white"
     >
       <option>Home Loan</option>
-      <option>Vehicle Loan</option>
+      <option>Car Loan</option>
       <option>Personal Loan</option>
-      <option>Education Loan</option>
       <option>Credit Card</option>
       <option>Other</option>
     </select>

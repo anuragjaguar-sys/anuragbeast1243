@@ -46,6 +46,9 @@ export interface GoalProfile {
   desiredMonthlyRetirementIncome: number;
   annualTravelBudget: number;
   emergencyFundMonths: number;
+  emergencyFundTarget: number;
+  financialIndependenceTarget: number;
+  homeLoanOriginalAmount: number;
 }
 
 // NEW: Partner Profile for Household Mode

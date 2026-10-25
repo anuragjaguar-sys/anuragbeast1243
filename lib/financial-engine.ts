@@ -1,6 +1,8 @@
 import { loadMonthlyReview, } from "./storage";
 import { parseAmount } from "./spending-analytics";
 import type { MonthlyFinancialStatement } from "./monthly-review";
+import type { FinancialProfile } from "./profile/profile.types";
+import { StorageManager } from "./core/storage-manager";
 import {
   getPortfolioSummary,
   getPortfolio,
@@ -35,6 +37,34 @@ export type AICFOInsights = {
 function safeParseAmount(value: string): number {
   if (!value || !value.trim()) return 0;
   return parseAmount(value);
+}
+
+function configuredTarget(value: unknown): number {
+  const target = Number(value);
+  return Number.isFinite(target) && target > 0 ? target : 0;
+}
+
+function getConfiguredFinancialTargets() {
+  const profile = StorageManager.get<FinancialProfile | null>(
+    StorageManager.KEYS.PROFILE,
+    null
+  );
+  const goals = profile?.goals;
+  const review = loadMonthlyReview();
+  const monthlyExp =
+    (review ? calculateTotalExpenses(review) : 0) ||
+    Number((profile as any)?.monthlyExpenses) ||
+    50000;
+  const targetMonths = Number(goals?.emergencyFundMonths) || 6;
+
+  return {
+    emergencyFundTarget:
+      configuredTarget(goals?.emergencyFundTarget) || monthlyExp * targetMonths,
+    homeLoanOriginalAmount:
+      configuredTarget(goals?.homeLoanOriginalAmount) || 1550000,
+    financialIndependenceTarget:
+      configuredTarget(goals?.financialIndependenceTarget) || 100000000,
+  };
 }
 
 /**
@@ -139,20 +169,50 @@ export function getAICFOInsights(
  */
 export function getCurrentFinancialPosition() {
   const portfolio = getPortfolio();
+  const review = loadMonthlyReview();
+  const profile = StorageManager.get<FinancialProfile | null>(
+    StorageManager.KEYS.PROFILE,
+    null
+  );
 
   const assets = getAssets(portfolio);
   const liabilities = getLiabilities(portfolio);
 
+  const isPropertyAsset = (a: { name?: string; category?: string }) => {
+    const n = (a.name || "").toLowerCase();
+    const c = (a.category || "").toLowerCase();
+    return (
+      c === "real estate" ||
+      c === "property" ||
+      n.includes("flat") ||
+      n.includes("dehradun") ||
+      n.includes("property") ||
+      n.includes("real estate") ||
+      n.includes("house")
+    );
+  };
+
   const valueForCategory = (category: string): number =>
     assets
-      .filter((asset) => asset.category === category)
-      .reduce((sum, asset) => sum + asset.currentValue, 0);
+      .filter((asset) => {
+        if (
+          (category === "Savings Account" ||
+            category === "Emergency Fund" ||
+            category === "Cash") &&
+          isPropertyAsset(asset)
+        ) {
+          return false;
+        }
+        return asset.category === category;
+      })
+      .reduce((sum, asset) => sum + (Number(asset.currentValue) || 0), 0);
 
   const liabilityForCategory = (category: string): number =>
     liabilities
       .filter((liability) => liability.category === category)
       .reduce(
-        (sum, liability) => sum + liability.outstandingAmount,
+        (sum, liability) =>
+          sum + (Number(liability.outstandingAmount ?? liability.currentValue) || 0),
         0
       );
 
@@ -160,22 +220,36 @@ export function getCurrentFinancialPosition() {
   const ppf = valueForCategory("PPF");
   const epf = valueForCategory("EPF");
   const nps = valueForCategory("NPS");
-  const emergencyFund = valueForCategory("Emergency Fund");
 
-  const cash =
-    valueForCategory("Savings Account") +
-    valueForCategory("Cash");
+  const portfolioEmergency = valueForCategory("Emergency Fund");
+  const fallbackEmergency =
+    safeParseAmount(review?.assets?.emergencyFund ?? "") ||
+    safeParseAmount(review?.cashAllocation?.emergencyFund ?? "") ||
+    Number(profile?.assets?.emergencyFund || 0);
+  const emergencyFund = portfolioEmergency > 0 ? portfolioEmergency : fallbackEmergency;
+
+  const portfolioCash =
+    valueForCategory("Savings Account") + valueForCategory("Cash");
+  const fallbackCash =
+    safeParseAmount(review?.assets?.savingsAccount ?? "") ||
+    safeParseAmount(review?.cashAllocation?.savingsAccount ?? "") ||
+    Number(profile?.assets?.cash || 0);
+  const cash = portfolioCash > 0 ? portfolioCash : fallbackCash;
 
   const homeLoan = liabilityForCategory("Home Loan");
   const otherLoans = liabilityForCategory("Other");
 
-  const financialAssets = assets.reduce(
-    (sum, asset) => sum + asset.currentValue,
+  const rawAssetTotal = assets.reduce(
+    (sum, asset) => sum + (Number(asset.currentValue) || 0),
     0
   );
+  const extraEmergency = portfolioEmergency === 0 && emergencyFund > 0 ? emergencyFund : 0;
+  const extraCash = portfolioCash === 0 && cash > 0 ? cash : 0;
+  const financialAssets = rawAssetTotal + extraEmergency + extraCash;
 
   const totalLiabilities = liabilities.reduce(
-    (sum, liability) => sum + liability.outstandingAmount,
+    (sum, liability) =>
+      sum + (Number(liability.outstandingAmount ?? liability.currentValue) || 0),
     0
   );
 
@@ -239,16 +313,11 @@ export function getFinancialMetrics(): FinancialMetrics | null {
   const emergencyFund = position.emergencyFund;
   const homeLoan = position.homeLoan;
 
-  /*
-   * Temporary compatibility targets.
-   *
-   * These are intentionally isolated here.
-   * They will be replaced by Profile / Goal / Retirement
-   * engine values in the next structural migration.
-   */
-  const emergencyFundTarget = 600_000;
-  const homeLoanOriginal = 1_550_000;
-  const netWorthTarget = 50_000_000;
+  const {
+    emergencyFundTarget,
+    homeLoanOriginalAmount,
+    financialIndependenceTarget,
+  } = getConfiguredFinancialTargets();
 
   const emergencyFundProgress =
     emergencyFundTarget > 0
@@ -261,11 +330,11 @@ export function getFinancialMetrics(): FinancialMetrics | null {
       : 0;
 
   const loanProgress =
-    homeLoanOriginal > 0
+    homeLoanOriginalAmount > 0
       ? Math.min(
           Math.round(
-            ((homeLoanOriginal - homeLoan) /
-              homeLoanOriginal) *
+            ((homeLoanOriginalAmount - homeLoan) /
+              homeLoanOriginalAmount) *
               100
           ),
           100
@@ -282,10 +351,10 @@ export function getFinancialMetrics(): FinancialMetrics | null {
       : 0;
 
   const financialIndependenceProgress =
-    netWorthTarget > 0
+    financialIndependenceTarget > 0
       ? Math.min(
           Math.round(
-            (portfolio.netWorth / netWorthTarget) * 100
+            (portfolio.netWorth / financialIndependenceTarget) * 100
           ),
           100
         )
@@ -307,11 +376,7 @@ export function getFinancialMetrics(): FinancialMetrics | null {
     retirementScore: statementMetrics?.retirementScore ?? 0,
     expenseRatio: statementMetrics?.expenseRatio ?? 0,
 
-    /*
-     * Current portfolio progress.
-     *
-     * Target sources are temporarily retained for compatibility.
-     */
+    /* Current portfolio progress uses user-configured targets. */
     emergencyFundProgress,
     loanProgress,
 
@@ -320,12 +385,6 @@ export function getFinancialMetrics(): FinancialMetrics | null {
      */
     debtRatio,
 
-    /*
-     * Temporary compatibility metric.
-     *
-     * The retirement / FIRE target will eventually come from
-     * the Retirement Engine rather than this hardcoded value.
-     */
     financialIndependenceProgress,
   };
 }
@@ -525,18 +584,17 @@ export function calculateDebtRatio(
  * inside getFinancialMetrics().
  */
 export function calculateEmergencyFundProgressFromStatement(
-  statement: MonthlyFinancialStatement
+  statement: MonthlyFinancialStatement,
+  emergencyFundTarget = getConfiguredFinancialTargets().emergencyFundTarget
 ): number {
   const current = safeParseAmount(
     statement.assets.emergencyFund
   );
 
-  const target = 600_000;
-
-  if (target <= 0) return 0;
+  if (emergencyFundTarget <= 0) return 0;
 
   return Math.min(
-    Math.round((current / target) * 100),
+    Math.round((current / emergencyFundTarget) * 100),
     100
   );
 }

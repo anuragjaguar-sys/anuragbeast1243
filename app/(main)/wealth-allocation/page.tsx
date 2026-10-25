@@ -32,14 +32,18 @@ export default function WealthAllocationPage() {
     loadData();
 
     // Listen for localStorage changes
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "fire54_monthly_reviews") {
+    const handleStorageChange = (event: Event) => {
+      if (event.type === "fire54_remote_data_updated" || (event as StorageEvent).key === "fire54_monthly_reviews") {
         loadData();
       }
     };
 
     window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
+    window.addEventListener("fire54_remote_data_updated", handleStorageChange);
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("fire54_remote_data_updated", handleStorageChange);
+    };
   }, []);
 
   if (!hasData) {

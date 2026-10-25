@@ -16,7 +16,8 @@ const LEGACY_KEY = "athena-goals";
 export function loadGoals(): Goal[] {
   // Check primary unified key first
   const goals = StorageManager.get<Goal[]>(PRIMARY_KEY, []);
-  if (Array.isArray(goals) && goals.length > 0) {
+  // A saved empty array is a synced deletion marker, not a missing store.
+  if (StorageManager.has(PRIMARY_KEY) && Array.isArray(goals)) {
     return goals;
   }
 
@@ -75,6 +76,6 @@ export function deleteGoal(goalId: string): void {
 // ----------------------------------------
 
 export function clearGoals(): void {
-  StorageManager.remove(PRIMARY_KEY);
+  saveGoals([]);
   StorageManager.remove(LEGACY_KEY);
 }

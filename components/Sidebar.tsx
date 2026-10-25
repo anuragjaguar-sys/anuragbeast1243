@@ -30,7 +30,7 @@ export default function Sidebar() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"synced" | "syncing" | "offline">("synced");
 
-  const triggerSync = async (forceReload = false) => {
+  const triggerSync = async () => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       setSyncStatus("offline");
       return;
@@ -41,8 +41,8 @@ export default function Sidebar() {
       const syncTask = (async () => {
         const email = await CloudSyncService.getUserEmail();
         setUserEmail(email);
-        await CloudSyncService.pushAllLocal();
         await CloudSyncService.pullRemoteState();
+        await CloudSyncService.pushAllLocal();
       })();
 
       const timeoutTask = new Promise((_, reject) =>
@@ -51,31 +51,34 @@ export default function Sidebar() {
 
       await Promise.race([syncTask, timeoutTask]);
       setSyncStatus("synced");
-      if (forceReload) {
-        window.location.reload();
-      }
     } catch {
       setSyncStatus("synced");
-      if (forceReload) {
-        window.location.reload();
-      }
     }
   };
 
   useEffect(() => {
     void CloudSyncService.getUserEmail().then(setUserEmail);
-    triggerSync(false);
+    void triggerSync();
 
-    const handleFocus = () => triggerSync(false);
+    const handleFocus = () => void triggerSync();
+    const handleOnline = () => void triggerSync();
     const handleRemoteUpdate = () => {
       setSyncStatus("synced");
     };
+    // Realtime is the fast path. This visible-tab check is a mobile-friendly
+    // fallback for browsers that suspend websocket connections in the background.
+    const syncInterval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void triggerSync();
+    }, 30_000);
 
     window.addEventListener("focus", handleFocus);
+    window.addEventListener("online", handleOnline);
     window.addEventListener("fire54_remote_data_updated", handleRemoteUpdate);
 
     return () => {
+      window.clearInterval(syncInterval);
       window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("online", handleOnline);
       window.removeEventListener("fire54_remote_data_updated", handleRemoteUpdate);
     };
   }, []);
@@ -99,8 +102,8 @@ export default function Sidebar() {
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => triggerSync(true)}
-            title="Tap to sync and reload"
+            onClick={() => void triggerSync()}
+            title="Sync changes across your devices"
             className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-xs text-zinc-300 transition active:scale-95"
           >
             {syncStatus === "syncing" ? (
@@ -199,7 +202,7 @@ export default function Sidebar() {
           )}
 
           <button
-            onClick={() => triggerSync(true)}
+            onClick={() => void triggerSync()}
             title="Click to sync and refresh data"
             className="w-full rounded-xl border border-zinc-800/80 bg-zinc-900/60 px-3 py-2 text-left transition hover:border-zinc-700 active:scale-98"
           >

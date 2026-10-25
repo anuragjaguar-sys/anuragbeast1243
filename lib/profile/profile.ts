@@ -47,5 +47,8 @@ export const DEFAULT_FINANCIAL_PROFILE: FinancialProfile = {
     desiredMonthlyRetirementIncome: 200000,
     annualTravelBudget: 300000,
     emergencyFundMonths: 12,
+    emergencyFundTarget: 0,
+    financialIndependenceTarget: 0,
+    homeLoanOriginalAmount: 0,
   },
 };

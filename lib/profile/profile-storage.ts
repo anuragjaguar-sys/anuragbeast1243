@@ -4,6 +4,16 @@ import { DEFAULT_FINANCIAL_PROFILE } from "./profile";
 import { StorageManager } from "@/lib/core/storage-manager";
 
 const PROFILE_KEY = StorageManager.KEYS.PROFILE;
+const PROFILE_SYNC_META_KEY = "profile_sync_meta";
+
+type ProfileSyncMetadata = {
+  updatedAt: number;
+};
+
+function getProfileUpdatedAt(value: string | null | undefined): number {
+  const updatedAt = value ? Date.parse(value) : Number.NaN;
+  return Number.isFinite(updatedAt) ? updatedAt : 0;
+}
 
 export async function hasSavedFinancialProfile(): Promise<boolean> {
   // 1. Check local cache first for instant response
@@ -46,7 +56,7 @@ export async function loadFinancialProfile(): Promise<FinancialProfile> {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("data")
+      .select("data, updated_at")
       .eq("user_id", user.id)
       .maybeSingle();
 
@@ -70,6 +80,9 @@ export async function loadFinancialProfile(): Promise<FinancialProfile> {
 
     // Update local cache with latest server record
     StorageManager.set(PROFILE_KEY, merged);
+    StorageManager.set<ProfileSyncMetadata>(PROFILE_SYNC_META_KEY, {
+      updatedAt: getProfileUpdatedAt(data.updated_at),
+    });
     return merged;
   } catch (err) {
     console.warn("[ProfileStorage] Falling back to local cache:", err);
@@ -78,13 +91,32 @@ export async function loadFinancialProfile(): Promise<FinancialProfile> {
 }
 
 export async function saveFinancialProfile(profile: FinancialProfile): Promise<void> {
-  // Always update local cache immediately for responsive UI
-  StorageManager.set(PROFILE_KEY, profile);
-
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     // User is working in local/guest mode; local state is saved
+    StorageManager.set(PROFILE_KEY, profile);
     return;
+  }
+
+  const localMetadata = StorageManager.get<ProfileSyncMetadata>(
+    PROFILE_SYNC_META_KEY,
+    { updatedAt: 0 }
+  );
+  const { data: remoteVersion, error: remoteVersionError } = await supabase
+    .from("profiles")
+    .select("updated_at")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (remoteVersionError) {
+    throw new Error("Unable to verify the latest profile version before saving.");
+  }
+
+  const remoteUpdatedAt = getProfileUpdatedAt(remoteVersion?.updated_at);
+  if (remoteUpdatedAt > localMetadata.updatedAt) {
+    throw new Error(
+      "Your profile changed on another device. Refresh this page before saving so no recent changes are overwritten."
+    );
   }
 
   const payload = {
@@ -100,6 +132,11 @@ export async function saveFinancialProfile(profile: FinancialProfile): Promise<v
     console.error("Failed to sync financial profile to cloud:", error.message || JSON.stringify(error));
     throw new Error(error.message || "Database upsert failed due to RLS policy");
   }
+
+  StorageManager.set(PROFILE_KEY, profile);
+  StorageManager.set<ProfileSyncMetadata>(PROFILE_SYNC_META_KEY, {
+    updatedAt: Date.now(),
+  });
 }
 
 export async function resetFinancialProfile(): Promise<void> {

@@ -25,6 +25,7 @@ const localStorageMock = createLocalStorageMock();
 beforeAll(() => {
   (globalThis as any).window = {
     localStorage: localStorageMock,
+    dispatchEvent: vi.fn(),
   };
 });
 
@@ -55,6 +56,14 @@ describe("StorageManager", () => {
     const fallback = { fallback: true };
     const res = StorageManager.get("non_existent_key", fallback);
     expect(res).toEqual(fallback);
+    expect(StorageManager.has("non_existent_key")).toBe(false);
+  });
+
+  it("distinguishes an intentional empty value from a missing key", () => {
+    StorageManager.set("empty_collection", []);
+
+    expect(StorageManager.has("empty_collection")).toBe(true);
+    expect(StorageManager.get("empty_collection", ["fallback"])).toEqual([]);
   });
 
   it("removes keys correctly", () => {
@@ -114,9 +123,18 @@ describe("CloudSyncService", () => {
     });
     const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
 
-    vi.mocked(supabase.from).mockReturnValue({
-      select: mockSelect,
-    } as any);
+    const mockProfileMaybeSingle = vi.fn().mockResolvedValue({
+      data: null,
+      error: null,
+    });
+    const mockProfileSelect = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({ maybeSingle: mockProfileMaybeSingle }),
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table) => {
+      if (table === "profiles") return { select: mockProfileSelect } as any;
+      return { select: mockSelect } as any;
+    });
 
     const success = await CloudSyncService.pullRemoteState();
     expect(success).toBe(true);
@@ -126,5 +144,43 @@ describe("CloudSyncService", () => {
 
     expect(localGoals).toEqual(remoteData.goals);
     expect(localPortfolio).toEqual(remoteData.portfolio);
+  });
+
+  it("keeps a newer local edit when an older remote version arrives", async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValue({
+      data: { user: { id: "user_123" } as any },
+      error: null,
+    });
+
+    StorageManager.set(StorageManager.KEYS.GOALS, [{ id: "local" }]);
+    StorageManager.set("goals_sync_meta", {
+      version: 1,
+      data: [{ id: "local" }],
+      updatedAt: 200,
+    });
+
+    const remoteEq = vi.fn().mockResolvedValue({
+      data: [
+        {
+          store_key: "goals",
+          payload: { version: 1, data: [{ id: "remote" }], updatedAt: 100 },
+          updated_at: "1970-01-01T00:00:00.100Z",
+        },
+      ],
+      error: null,
+    });
+    const profileEq = vi.fn().mockReturnValue({
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    });
+    vi.mocked(supabase.from).mockImplementation((table) =>
+      table === "profiles"
+        ? ({ select: vi.fn().mockReturnValue({ eq: profileEq }) } as any)
+        : ({ select: vi.fn().mockReturnValue({ eq: remoteEq }) } as any)
+    );
+
+    await expect(CloudSyncService.pullRemoteState()).resolves.toBe(true);
+    expect(StorageManager.get(StorageManager.KEYS.GOALS, [])).toEqual([
+      { id: "local" },
+    ]);
   });
 });

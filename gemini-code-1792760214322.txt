@@ -1,0 +1,791 @@
+#!/usr/bin/env python3
+"""
+Generates a PowerPoint (.pptx) presentation on:
+"Lessons Learned from the Russia-Ukraine War: Medical Aspects & Survivability in Drone Warfare"
+
+Requirements:
+    pip install python-pptx
+"""
+
+import sys
+from pptx import Presentation
+from pptx.util import Inches, Pt
+from pptx.enum.text import PP_ALIGN
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_SHAPE
+
+def create_deck(filename="drone_warfare_medical_lessons.pptx"):
+    prs = Presentation()
+    # 16:9 Widescreen standard
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    blank_layout = prs.slide_layouts[6]
+
+    # Palette
+    C_DARK_BG    = RGBColor(11, 17, 32)      # #0b1120
+    C_WHITE      = RGBColor(255, 255, 255)
+    C_LIGHT_BG   = RGBColor(248, 250, 252)   # #f8fafc
+    C_CARD_BG    = RGBColor(241, 245, 249)   # #f1f5f9
+    C_PRIMARY    = RGBColor(2, 132, 199)     # #0284c7 (Sky/Blue)
+    C_ACCENT_CYAN= RGBColor(56, 189, 248)    # #38bdf8
+    C_TEXT_DARK  = RGBColor(15, 23, 42)      # #0f172a
+    C_TEXT_MUTED = RGBColor(100, 116, 139)   # #64748b
+    C_TEXT_LIGHT = RGBColor(203, 213, 225)   # #cbd5e1
+    C_BORDER     = RGBColor(226, 232, 240)   # #e2e8f0
+    C_GREEN      = RGBColor(16, 185, 129)    # #10b981
+    C_AMBER      = RGBColor(245, 158, 11)    # #f59e0b
+    C_RED        = RGBColor(239, 68, 68)     # #ef4444
+
+    FONT_HEAD = "Arial"
+    FONT_BODY = "Arial"
+
+    def set_slide_background(slide, color):
+        bg = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height
+        )
+        bg.fill.solid()
+        bg.fill.fore_color.rgb = color
+        bg.line.fill.background()
+        return bg
+
+    def add_header(slide, kicker, title):
+        tb = slide.shapes.add_textbox(Inches(0.8), Inches(0.55), Inches(11.7), Inches(1.2))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        tf.margin_left = tf.margin_top = tf.margin_right = tf.margin_bottom = 0
+
+        # Kicker
+        p0 = tf.paragraphs[0]
+        p0.text = kicker.upper()
+        p0.font.name = FONT_HEAD
+        p0.font.size = Pt(11)
+        p0.font.bold = True
+        p0.font.color.rgb = C_PRIMARY
+        p0.space_after = Pt(4)
+
+        # Title
+        p1 = tf.add_paragraph()
+        p1.text = title
+        p1.font.name = FONT_HEAD
+        p1.font.size = Pt(26)
+        p1.font.bold = True
+        p1.font.color.rgb = C_TEXT_DARK
+
+    # =========================================================================
+    # SLIDE 1: Title (Dark Ground)
+    # =========================================================================
+    s1 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s1, C_DARK_BG)
+
+    # Eyebrow Pill
+    pill = s1.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(1.4), Inches(3.2), Inches(0.4))
+    pill.fill.solid()
+    pill.fill.fore_color.rgb = RGBColor(15, 43, 72)
+    pill.line.fill.background()
+    ptf = pill.text_frame
+    ptf.margin_left = Inches(0.15)
+    pp = ptf.paragraphs[0]
+    pp.text = "OPERATIONAL MEDICINE BRIEFING"
+    pp.font.name = FONT_HEAD
+    pp.font.size = Pt(10)
+    pp.font.bold = True
+    pp.font.color.rgb = C_ACCENT_CYAN
+
+    # Title & Subtitle box
+    tbox = s1.shapes.add_textbox(Inches(0.8), Inches(2.1), Inches(11.7), Inches(3.2))
+    ttf = tbox.text_frame
+    ttf.word_wrap = True
+    ttf.margin_left = ttf.margin_top = ttf.margin_right = ttf.margin_bottom = 0
+
+    p_title = ttf.paragraphs[0]
+    p_title.text = "Medical Aspects & Survivability in the Era of Drone Warfare"
+    p_title.font.name = FONT_HEAD
+    p_title.font.size = Pt(40)
+    p_title.font.bold = True
+    p_title.font.color.rgb = C_WHITE
+    p_title.space_after = Pt(18)
+
+    p_sub = ttf.add_paragraph()
+    p_sub.text = (
+        "How persistent aerial surveillance and FPV precision strikes demolished the golden hour "
+        "and transformed combat casualty care in the Russia-Ukraine conflict."
+    )
+    p_sub.font.name = FONT_BODY
+    p_sub.font.size = Pt(18)
+    p_sub.font.color.rgb = C_TEXT_LIGHT
+    p_sub.space_after = Pt(28)
+
+    # 3 Summary metrics at bottom
+    cols = [
+        ("Core Challenge", "Contested Evacuation & PFC"),
+        ("Emerging Solutions", "UGVs, Drone Resupply & Micro-Surgical Hubs"),
+        ("Doctrine Shift", "Forward Tourniquet Conversion (<2 hrs)")
+    ]
+    for i, (label, val) in enumerate(cols):
+        left = Inches(0.8 + i * 3.9)
+        cbox = s1.shapes.add_textbox(left, Inches(5.6), Inches(3.6), Inches(1.2))
+        ctf = cbox.text_frame
+        ctf.word_wrap = True
+        ctf.margin_left = ctf.margin_top = ctf.margin_right = ctf.margin_bottom = 0
+        p_l = ctf.paragraphs[0]
+        p_l.text = label.upper()
+        p_l.font.size = Pt(11)
+        p_l.font.bold = True
+        p_l.font.color.rgb = C_TEXT_MUTED
+        p_l.space_after = Pt(4)
+        p_v = ctf.add_paragraph()
+        p_v.text = val
+        p_v.font.size = Pt(14)
+        p_v.font.bold = True
+        p_v.font.color.rgb = C_ACCENT_CYAN
+
+    # =========================================================================
+    # SLIDE 2: GWOT vs Drone Battlefield (Comparison)
+    # =========================================================================
+    s2 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s2, C_WHITE)
+    add_header(s2, "Doctrinal Fracture", "GWOT Paradigm vs. Drone Battlefield")
+
+    # Column Left: Counter-Insurgency
+    c1 = s2.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(2.0), Inches(5.6), Inches(4.8))
+    c1.fill.solid()
+    c1.fill.fore_color.rgb = C_LIGHT_BG
+    c1.line.color.rgb = C_BORDER
+    c1.line.width = Pt(1)
+    tf1 = c1.text_frame
+    tf1.word_wrap = True
+    tf1.margin_left = tf1.margin_top = tf1.margin_right = Inches(0.4)
+    p = tf1.paragraphs[0]
+    p.text = "Counter-Insurgency Era (GWOT)"
+    p.font.name = FONT_HEAD
+    p.font.size = Pt(20)
+    p.font.bold = True
+    p.font.color.rgb = C_TEXT_DARK
+    p.space_after = Pt(16)
+
+    points1 = [
+        ("Air Supremacy: ", "Rapid rotary MEDEVAC directly to point of injury."),
+        ("Golden Hour: ", "Surgical arrival within 60 minutes established as standard."),
+        ("Sanctuary: ", "Red Cross insignia respected; casualty hubs non-targeted."),
+        ("Minimal Tourniquet Time: ", "Rapid handoff prevented limb ischemia necrosis.")
+    ]
+    for bold_hdr, text in points1:
+        p = tf1.add_paragraph()
+        p.space_after = Pt(12)
+        r1 = p.add_run()
+        r1.text = bold_hdr
+        r1.font.bold = True
+        r1.font.size = Pt(14)
+        r1.font.color.rgb = C_TEXT_DARK
+        r2 = p.add_run()
+        r2.text = text
+        r2.font.size = Pt(14)
+        r2.font.color.rgb = C_TEXT_MUTED
+
+    # Column Right: Near-Peer Drone War
+    c2 = s2.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(6.8), Inches(2.0), Inches(5.7), Inches(4.8))
+    c2.fill.solid()
+    c2.fill.fore_color.rgb = RGBColor(239, 246, 255) # Light blue
+    c2.line.color.rgb = RGBColor(191, 219, 254)
+    c2.line.width = Pt(1)
+    tf2 = c2.text_frame
+    tf2.word_wrap = True
+    tf2.margin_left = tf2.margin_top = tf2.margin_right = Inches(0.4)
+    p = tf2.paragraphs[0]
+    p.text = "Near-Peer Drone War (Ukraine)"
+    p.font.name = FONT_HEAD
+    p.font.size = Pt(20)
+    p.font.bold = True
+    p.font.color.rgb = C_PRIMARY
+    p.space_after = Pt(16)
+
+    points2 = [
+        ("Transparent Sky: ", "Rotary evacuation suicide; absolute airspace denial."),
+        ("Prolonged Delay: ", "12 to 72 hours before kinetic extraction is viable."),
+        ("Targeted Assets: ", "Marked medical vehicles and bunkers actively hunted."),
+        ("PCC Demands: ", "Far-forward limb salvage, blood management & dug-out care.")
+    ]
+    for bold_hdr, text in points2:
+        p = tf2.add_paragraph()
+        p.space_after = Pt(12)
+        r1 = p.add_run()
+        r1.text = bold_hdr
+        r1.font.bold = True
+        r1.font.size = Pt(14)
+        r1.font.color.rgb = C_PRIMARY
+        r2 = p.add_run()
+        r2.text = text
+        r2.font.size = Pt(14)
+        r2.font.color.rgb = C_TEXT_DARK
+
+    # =========================================================================
+    # SLIDE 3: Lethality Dynamics (Big Number)
+    # =========================================================================
+    s3 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s3, C_WHITE)
+    add_header(s3, "Lethality Dynamics", "Pre-Hospital Fatality Surge")
+
+    center_box = s3.shapes.add_textbox(Inches(1.5), Inches(2.2), Inches(10.3), Inches(4.5))
+    ctf = center_box.text_frame
+    ctf.word_wrap = True
+    ctf.margin_left = ctf.margin_top = ctf.margin_right = ctf.margin_bottom = 0
+
+    p_num = ctf.paragraphs[0]
+    p_num.text = "90%"
+    p_num.alignment = PP_ALIGN.CENTER
+    p_num.font.name = FONT_HEAD
+    p_num.font.size = Pt(110)
+    p_num.font.bold = True
+    p_num.font.color.rgb = C_PRIMARY
+    p_num.space_after = Pt(8)
+
+    p_call = ctf.add_paragraph()
+    p_call.text = "Combat fatalities occur prior to reaching surgical medical facilities"
+    p_call.alignment = PP_ALIGN.CENTER
+    p_call.font.name = FONT_HEAD
+    p_call.font.size = Pt(22)
+    p_call.font.bold = True
+    p_call.font.color.rgb = C_TEXT_DARK
+    p_call.space_after = Pt(12)
+
+    p_desc = ctf.add_paragraph()
+    p_desc.text = (
+        "Constant drone-spotted artillery and loitering munitions cause massive blast poly-trauma "
+        "while pinning rescue teams inside trenches, resulting in catastrophic unmanaged hemorrhage."
+    )
+    p_desc.alignment = PP_ALIGN.CENTER
+    p_desc.font.name = FONT_BODY
+    p_desc.font.size = Pt(15)
+    p_desc.font.color.rgb = C_TEXT_MUTED
+
+    # =========================================================================
+    # SLIDE 4: Contested CASEVAC (Tactical Breakdown)
+    # =========================================================================
+    s4 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s4, C_WHITE)
+    add_header(s4, "Trench Reality", "Contested Casualty Evacuation (CASEVAC)")
+
+    # Left visual card
+    lcard = s4.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(2.0), Inches(5.4), Inches(4.8))
+    lcard.fill.solid()
+    lcard.fill.fore_color.rgb = C_CARD_BG
+    lcard.line.fill.background()
+    ltf = lcard.text_frame
+    ltf.word_wrap = True
+    ltf.margin_left = ltf.margin_top = ltf.margin_right = Inches(0.4)
+    lp = ltf.paragraphs[0]
+    lp.text = "CASEVAC ATTRITION FACTORS"
+    lp.font.size = Pt(12)
+    lp.font.bold = True
+    lp.font.color.rgb = C_PRIMARY
+    lp.space_after = Pt(14)
+
+    factors = [
+        ("Observation Transparency: ", "Any vehicular movement within 10–15 km of the zero-line triggers immediate drone-guided artillery or FPV attack."),
+        ("No Aerial Evacuation: ", "Helicopter evacuation completely non-existent near the FLOT; strictly forbidden due to MANPADS and loitering munitions."),
+        ("Concealment Priority: ", "All primary evacuation attempts are forced into nighttime hours, rain, fog, or heavy cloud cover.")
+    ]
+    for h, b in factors:
+        p = ltf.add_paragraph()
+        p.space_after = Pt(12)
+        r1 = p.add_run()
+        r1.text = h
+        r1.font.bold = True
+        r1.font.size = Pt(13)
+        r1.font.color.rgb = C_TEXT_DARK
+        r2 = p.add_run()
+        r2.text = b
+        r2.font.size = Pt(13)
+        r2.font.color.rgb = C_TEXT_MUTED
+
+    # Right side 3 stack cards
+    right_cards = [
+        ("Nocturnal Windows Only", "Thermal-optic drones detect human body heat signatures, forcing stretcher teams to maneuver strictly under electronic warfare or bad weather."),
+        ("Manual Litter Exhaustion", "Combat medics must carry stretchers on foot across 4 to 8 km of cratered trenches; requires 4 to 6 bearers per casualty."),
+        ("Targeting of Medical Markers", "Ambulances stripped of Red Cross insignia; frontlines rely on unmarked, mud-camouflaged civilian minivans and pickup trucks.")
+    ]
+    for i, (title, desc) in enumerate(right_cards):
+        top = Inches(2.0 + i * 1.65)
+        rc = s4.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(6.5), top, Inches(6.0), Inches(1.45))
+        rc.fill.solid()
+        rc.fill.fore_color.rgb = C_LIGHT_BG
+        rc.line.color.rgb = C_PRIMARY
+        rc.line.width = Pt(1)
+        rtf = rc.text_frame
+        rtf.word_wrap = True
+        rtf.margin_left = Inches(0.25)
+        rtf.margin_top = Inches(0.2)
+        rtf.margin_right = Inches(0.25)
+        
+        rp1 = rtf.paragraphs[0]
+        rp1.text = title
+        rp1.font.size = Pt(15)
+        rp1.font.bold = True
+        rp1.font.color.rgb = C_TEXT_DARK
+        rp1.space_after = Pt(3)
+
+        rp2 = rtf.add_paragraph()
+        rp2.text = desc
+        rp2.font.size = Pt(12)
+        rp2.font.color.rgb = C_TEXT_MUTED
+
+    # =========================================================================
+    # SLIDE 5: 3 Core Medical Challenges (Card Grid)
+    # =========================================================================
+    s5 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s5, C_WHITE)
+    add_header(s5, "Pathology & Clinical Shift", "Three New Clinical Realities at the Front")
+
+    challenges = [
+        (
+            "Limb Ischemia Epidemic",
+            "Tourniquets left active for 6 to 24+ hours result in massive preventable amputations, permanent nerve necrosis, and lethal systemic reperfusion injury."
+        ),
+        (
+            "Shaped Shrapnel Trauma",
+            "FPV drones carrying improvised warheads spray thousands of tungsten balls and steel bearings, creating devastating multi-trajectory micro-shrapnel wounds."
+        ),
+        (
+            "Lethal Hypothermia Triad",
+            "Wounded soldiers immobilized in damp mud dugouts trigger acute hypothermia, acidosis, and coagulopathy—even during warm-weather seasons."
+        )
+    ]
+
+    for i, (title, body) in enumerate(challenges):
+        left = Inches(0.8 + i * 4.0)
+        card = s5.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, Inches(2.2), Inches(3.7), Inches(4.4))
+        card.fill.solid()
+        card.fill.fore_color.rgb = C_LIGHT_BG
+        card.line.color.rgb = C_BORDER
+        card.line.width = Pt(1)
+
+        ctf = card.text_frame
+        ctf.word_wrap = True
+        ctf.margin_left = ctf.margin_top = ctf.margin_right = Inches(0.35)
+
+        p_num = ctf.paragraphs[0]
+        p_num.text = f"0{i+1}"
+        p_num.font.name = FONT_HEAD
+        p_num.font.size = Pt(18)
+        p_num.font.bold = True
+        p_num.font.color.rgb = C_PRIMARY
+        p_num.space_after = Pt(10)
+
+        p_title = ctf.add_paragraph()
+        p_title.text = title
+        p_title.font.name = FONT_HEAD
+        p_title.font.size = Pt(18)
+        p_title.font.bold = True
+        p_title.font.color.rgb = C_TEXT_DARK
+        p_title.space_after = Pt(12)
+
+        p_body = ctf.add_paragraph()
+        p_body.text = body
+        p_body.font.name = FONT_BODY
+        p_body.font.size = Pt(13)
+        p_body.font.color.rgb = C_TEXT_MUTED
+
+    # =========================================================================
+    # SLIDE 6: Tourniquet Timeline (Horizontal Bars)
+    # =========================================================================
+    s6 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s6, C_WHITE)
+    add_header(s6, "Time-to-Care Breakdown", "Tourniquet Degradation & Limb Viability")
+
+    bars = [
+        ("0 - 2 Hours: Reversible Ischemia Window", ">95% Limb Salvage Rate", 10.0, C_GREEN),
+        ("2 - 6 Hours: Neuromuscular Necrosis Begins", "50% Neurological Deficit", 6.0, C_AMBER),
+        ("> 6 to 24 Hours: Severe Tissue Death (Typical Frontline Delay)", "Amputation Mandatory / Sepsis", 3.0, C_RED)
+    ]
+
+    for i, (label, metric, bar_width, color) in enumerate(bars):
+        top_y = Inches(2.1 + i * 1.3)
+        # Text row
+        tb = s6.shapes.add_textbox(Inches(0.8), top_y, Inches(11.7), Inches(0.4))
+        ttf = tb.text_frame
+        ttf.margin_left = ttf.margin_top = ttf.margin_bottom = ttf.margin_right = 0
+        p = ttf.paragraphs[0]
+        r1 = p.add_run()
+        r1.text = label
+        r1.font.bold = True
+        r1.font.size = Pt(14)
+        r1.font.color.rgb = C_TEXT_DARK
+        r2 = p.add_run()
+        r2.text = f"  —  {metric}"
+        r2.font.bold = True
+        r2.font.size = Pt(14)
+        r2.font.color.rgb = color
+
+        # Background track
+        track = s6.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), top_y + Inches(0.42), Inches(11.7), Inches(0.35))
+        track.fill.solid()
+        track.fill.fore_color.rgb = C_BORDER
+        track.line.fill.background()
+
+        # Filled bar
+        fill_bar = s6.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), top_y + Inches(0.42), Inches(bar_width), Inches(0.35))
+        fill_bar.fill.solid()
+        fill_bar.fill.fore_color.rgb = color
+        fill_bar.line.fill.background()
+
+    # Callout banner at bottom
+    callout = s6.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(6.0), Inches(11.7), Inches(0.9))
+    callout.fill.solid()
+    callout.fill.fore_color.rgb = C_CARD_BG
+    callout.line.color.rgb = C_BORDER
+    cotf = callout.text_frame
+    cotf.margin_left = Inches(0.3)
+    cotf.margin_top = Inches(0.18)
+    cop = cotf.paragraphs[0]
+    r_c1 = cop.add_run()
+    r_c1.text = "Operational Takeaway: "
+    r_c1.font.bold = True
+    r_c1.font.size = Pt(13)
+    r_c1.font.color.rgb = C_TEXT_DARK
+    r_c2 = cop.add_run()
+    r_c2.text = (
+        "Frontline combat medics must be formally trained and doctrinally authorized to perform "
+        "in-trench tourniquet conversion to hemostatic pressure dressings within 2 hours of application."
+    )
+    r_c2.font.size = Pt(13)
+    r_c2.font.color.rgb = C_TEXT_MUTED
+
+    # =========================================================================
+    # SLIDE 7: Prolonged Field Care (PFC)
+    # =========================================================================
+    s7 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s7, C_WHITE)
+    add_header(s7, "Tactical Adaptation", "Pushing ICU Capabilities into Trench Dugouts")
+
+    pfc_items = [
+        ("Whole Blood at Point of Injury", "Forward trench refrigeration and transportable coolers allow administration of low-titer Type O whole blood before patient transfer, replacing crystalloids."),
+        ("Pocket Ultrasound (POCUS)", "Handheld ultrasound probes connected to smartphones diagnose hemothorax, pneumothorax, and free fluid directly in subterranean bunkers."),
+        ("Active Hypothermia Reversal", "Chemical heating pads combined with vapor-barrier hypothermia survival wraps deployed within minutes of injury prevent lethal triad progression."),
+        ("Prolonged Pain & Sedation Protocols", "Sublingual fentanyl and ketamine dosing schedules managed by medics for 24+ hours while sheltering during active drone gridlock.")
+    ]
+
+    for i, (head, text) in enumerate(pfc_items):
+        col = i % 2
+        row = i // 2
+        left = Inches(0.8 + col * 5.95)
+        top = Inches(2.1 + row * 2.3)
+
+        box = s7.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, Inches(5.75), Inches(2.05))
+        box.fill.solid()
+        box.fill.fore_color.rgb = C_LIGHT_BG
+        box.line.color.rgb = C_BORDER
+        box.line.width = Pt(1)
+
+        btf = box.text_frame
+        btf.word_wrap = True
+        btf.margin_left = btf.margin_top = btf.margin_right = Inches(0.3)
+
+        bp = btf.paragraphs[0]
+        bp.text = head
+        bp.font.name = FONT_HEAD
+        bp.font.size = Pt(16)
+        bp.font.bold = True
+        bp.font.color.rgb = C_PRIMARY
+        bp.space_after = Pt(6)
+
+        bp2 = btf.add_paragraph()
+        bp2.text = text
+        bp2.font.name = FONT_BODY
+        bp2.font.size = Pt(12)
+        bp2.font.color.rgb = C_TEXT_DARK
+
+    # =========================================================================
+    # SLIDE 8: Robotics & Heavy Drone Evacuation
+    # =========================================================================
+    s8 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s8, C_WHITE)
+    add_header(s8, "Technological Countermeasures", "Robotics & Heavy Drone CASEVAC")
+
+    tech_cards = [
+        ("Unmanned Ground Vehicles (UGVs)", "Tracked & Wheeled Robotic Sleds", 
+         "Low-profile tracked unmanned ground vehicles navigate shell-cratered terrain under direct enemy observation. Tele-operated via FPV fiber-optic or radio links to extract critically wounded soldiers without placing additional human stretcher teams at risk."),
+        ("Heavy-Lift UAS Drone Drops", "Autonomous Blood & Tourniquet Delivery", 
+         "Agricultural and octocopter heavy bomber drones ('Baba Yaga') routinely resupply encircled frontline units with fresh blood units, tourniquets, hemostatic gauze, and battery packs dropped directly onto dugout positions."),
+        ("Experimental Drone Evacuation", "Tethered Litter Extractions", 
+         "Frontline testing of high-capacity cargo multicopters capable of lifting 120+ kg to conduct rapid airborne litter extraction over impassable minefields and anti-tank ditch zones.")
+    ]
+
+    for i, (main_t, sub_t, body_t) in enumerate(tech_cards):
+        top_y = Inches(2.0 + i * 1.65)
+        box = s8.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), top_y, Inches(11.7), Inches(1.45))
+        box.fill.solid()
+        box.fill.fore_color.rgb = C_LIGHT_BG
+        box.line.color.rgb = C_BORDER
+        box.line.width = Pt(1)
+
+        btf = box.text_frame
+        btf.word_wrap = True
+        btf.margin_left = Inches(0.3)
+        btf.margin_top = Inches(0.18)
+        btf.margin_right = Inches(0.3)
+
+        p1 = btf.paragraphs[0]
+        r1 = p1.add_run()
+        r1.text = main_t
+        r1.font.bold = True
+        r1.font.size = Pt(15)
+        r1.font.color.rgb = C_TEXT_DARK
+        r2 = p1.add_run()
+        r2.text = f"  |  {sub_t}"
+        r2.font.bold = True
+        r2.font.size = Pt(13)
+        r2.font.color.rgb = C_PRIMARY
+        p1.space_after = Pt(4)
+
+        p2 = btf.add_paragraph()
+        p2.text = body_t
+        p2.font.size = Pt(12)
+        p2.font.color.rgb = C_TEXT_MUTED
+
+    # =========================================================================
+    # SLIDE 9: Dispersal & Micro Stabilization Hubs
+    # =========================================================================
+    s9 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s9, C_WHITE)
+    add_header(s9, "Facility Protection", "Dispersal of Forward Surgical Infrastructure")
+
+    stats = [
+        ("428+", "Targeted attacks on medical evacuation vehicles"),
+        ("< 5 min", "Detection-to-strike drone kill chain duration"),
+        ("-80%", "Reduction in forward medical footprint profile")
+    ]
+    for i, (num, lbl) in enumerate(stats):
+        left = Inches(0.8 + i * 4.0)
+        tb = s9.shapes.add_textbox(left, Inches(2.0), Inches(3.7), Inches(1.5))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        tf.margin_left = tf.margin_top = tf.margin_bottom = tf.margin_right = 0
+        p_num = tf.paragraphs[0]
+        p_num.text = num
+        p_num.font.name = FONT_HEAD
+        p_num.font.size = Pt(44)
+        p_num.font.bold = True
+        p_num.font.color.rgb = C_PRIMARY
+        p_lbl = tf.add_paragraph()
+        p_lbl.text = lbl
+        p_lbl.font.size = Pt(13)
+        p_lbl.font.color.rgb = C_TEXT_MUTED
+
+    # Two detail cards below
+    cards_s9 = [
+        ("Subterranean Micro-Hubs", "Traditional field tent hospitals and prominent forward aid posts have been completely abandoned. Surgical units operate underground inside abandoned root cellars, basements, and tunnel networks reinforced with heavy timber and dirt mounds."),
+        ("Electronic & Thermal Masking", "Strict radio silence protocols, Starlink camouflaging, and thermal tarpaulins deployed over generators prevent reconnaissance UAVs from pinpointing medical stabilization points.")
+    ]
+    for i, (title, desc) in enumerate(cards_s9):
+        left = Inches(0.8 + i * 5.95)
+        box = s9.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, Inches(4.0), Inches(5.75), Inches(2.6))
+        box.fill.solid()
+        box.fill.fore_color.rgb = C_LIGHT_BG
+        box.line.color.rgb = C_BORDER
+        btf = box.text_frame
+        btf.word_wrap = True
+        btf.margin_left = btf.margin_top = btf.margin_right = Inches(0.35)
+        p1 = btf.paragraphs[0]
+        p1.text = title
+        p1.font.size = Pt(18)
+        p1.font.bold = True
+        p1.font.color.rgb = C_TEXT_DARK
+        p1.space_after = Pt(8)
+        p2 = btf.add_paragraph()
+        p2.text = desc
+        p2.font.size = Pt(13)
+        p2.font.color.rgb = C_TEXT_MUTED
+
+    # =========================================================================
+    # SLIDE 10: Neurotrauma & Drone Psychosis
+    # =========================================================================
+    s10 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s10, C_WHITE)
+    add_header(s10, "Invisible Casualties", "Acoustic Strain & Blast Traumatic Brain Injury")
+
+    col_l = s10.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.8), Inches(2.0), Inches(5.6), Inches(4.8))
+    col_l.fill.solid()
+    col_l.fill.fore_color.rgb = C_LIGHT_BG
+    col_l.line.color.rgb = C_BORDER
+    tf_l = col_l.text_frame
+    tf_l.word_wrap = True
+    tf_l.margin_left = tf_l.margin_top = tf_l.margin_right = Inches(0.35)
+    p = tf_l.paragraphs[0]
+    p.text = "Psychological Attrition ('Drone Psychosis')"
+    p.font.name = FONT_HEAD
+    p.font.size = Pt(18)
+    p.font.bold = True
+    p.font.color.rgb = C_RED
+    p.space_after = Pt(14)
+    bullets_l = [
+        ("Acoustic Terror: ", "Constant high-pitched FPV rotor hum overhead creates unrelenting sympathetic nervous system arousal."),
+        ("No Sanctuary: ", "Dugout roof penetrations eliminate perceived psychological safety even inside hardened shelters."),
+        ("Exhaustion Syndromes: ", "Inability to safely rotate troops under persistent surveillance leads to rapid cognitive breakdown.")
+    ]
+    for h, b in bullets_l:
+        p = tf_l.add_paragraph()
+        p.space_after = Pt(10)
+        r1 = p.add_run()
+        r1.text = h
+        r1.font.bold = True
+        r1.font.size = Pt(13)
+        r1.font.color.rgb = C_TEXT_DARK
+        r2 = p.add_run()
+        r2.text = b
+        r2.font.size = Pt(13)
+        r2.font.color.rgb = C_TEXT_MUTED
+
+    col_r = s10.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(6.8), Inches(2.0), Inches(5.7), Inches(4.8))
+    col_r.fill.solid()
+    col_r.fill.fore_color.rgb = C_LIGHT_BG
+    col_r.line.color.rgb = C_BORDER
+    tf_r = col_r.text_frame
+    tf_r.word_wrap = True
+    tf_r.margin_left = tf_r.margin_top = tf_r.margin_right = Inches(0.35)
+    p = tf_r.paragraphs[0]
+    p.text = "Repetitive Blast TBI (Concussion Cascade)"
+    p.font.name = FONT_HEAD
+    p.font.size = Pt(18)
+    p.font.bold = True
+    p.font.color.rgb = C_PRIMARY
+    p.space_after = Pt(14)
+    bullets_r = [
+        ("Confined Overpressure: ", "FPV explosive detonations in enclosed trenches amplify shockwaves, causing severe micro-concussions."),
+        ("Vestibular Dysfunction: ", "Balance, vision, and fine motor skills severely degraded without external penetrating shrapnel wounds."),
+        ("Mandatory Rest Protocols: ", "72-hour forward dark-room protocols established to allow neuro-recovery prior to re-deployment.")
+    ]
+    for h, b in bullets_r:
+        p = tf_r.add_paragraph()
+        p.space_after = Pt(10)
+        r1 = p.add_run()
+        r1.text = h
+        r1.font.bold = True
+        r1.font.size = Pt(13)
+        r1.font.color.rgb = C_TEXT_DARK
+        r2 = p.add_run()
+        r2.text = b
+        r2.font.size = Pt(13)
+        r2.font.color.rgb = C_TEXT_MUTED
+
+    # =========================================================================
+    # SLIDE 11: Future Doctrine Matrix (Table)
+    # =========================================================================
+    s11 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s11, C_WHITE)
+    add_header(s11, "Strategic Synthesis", "Medical Doctrine Shift for Large-Scale Combat Operations")
+
+    rows = 5
+    cols = 3
+    tbl_shape = s11.shapes.add_table(rows, cols, Inches(0.8), Inches(2.0), Inches(11.7), Inches(4.5))
+    tbl = tbl_shape.table
+    tbl.columns[0].width = Inches(3.0)
+    tbl.columns[1].width = Inches(4.3)
+    tbl.columns[2].width = Inches(4.4)
+
+    headers = ["Capability Domain", "Legacy GWOT Doctrine", "Required Modern Drone War Doctrine"]
+    for j, h in enumerate(headers):
+        cell = tbl.cell(0, j)
+        cell.fill.solid()
+        cell.fill.fore_color.rgb = C_TEXT_DARK
+        p = cell.text_frame.paragraphs[0]
+        p.text = h
+        p.font.name = FONT_HEAD
+        p.font.size = Pt(13)
+        p.font.bold = True
+        p.font.color.rgb = C_WHITE
+
+    table_data = [
+        ("Casualty Evacuation", "Rotary flight & soft ambulance vans", "Autonomous UGVs, armored APC shuttles & night convoys"),
+        ("Hemorrhage Control", "Rapid tourniquet placement; ER handoff", "Frontline tourniquet conversion (<2 hrs) to pressure dressings"),
+        ("Resuscitation Fluids", "Crystalloids / Saline IV at squad level", "Far-forward pre-hospital whole blood & freeze-dried plasma"),
+        ("Operational Timeline", "60-minute Golden Hour to surgery", "Prolonged Field Care (PFC) in dugouts for 24 to 72 hours")
+    ]
+
+    for i, row in enumerate(table_data):
+        for j, text in enumerate(row):
+            cell = tbl.cell(i+1, j)
+            cell.fill.solid()
+            cell.fill.fore_color.rgb = C_LIGHT_BG if i % 2 == 0 else C_WHITE
+            p = cell.text_frame.paragraphs[0]
+            p.text = text
+            p.font.size = Pt(12)
+            p.font.color.rgb = C_TEXT_DARK if j != 1 else C_TEXT_MUTED
+            if j == 0:
+                p.font.bold = True
+
+    # =========================================================================
+    # SLIDE 12: Closing / Key Takeaways (Dark Ground)
+    # =========================================================================
+    s12 = prs.slides.add_slide(blank_layout)
+    set_slide_background(s12, C_DARK_BG)
+
+    cbox12 = s12.shapes.add_textbox(Inches(1.5), Inches(1.8), Inches(10.3), Inches(4.0))
+    ctf12 = cbox12.text_frame
+    ctf12.word_wrap = True
+    ctf12.margin_left = ctf12.margin_top = ctf12.margin_right = ctf12.margin_bottom = 0
+
+    p_k = ctf12.paragraphs[0]
+    p_k.text = "EXECUTIVE SUMMARY"
+    p_k.alignment = PP_ALIGN.CENTER
+    p_k.font.name = FONT_HEAD
+    p_k.font.size = Pt(12)
+    p_k.font.bold = True
+    p_k.font.color.rgb = C_ACCENT_CYAN
+    p_k.space_after = Pt(16)
+
+    p_quote = ctf12.add_paragraph()
+    p_quote.text = '"When the sky becomes transparent, survival depends on endurance in the dirt."'
+    p_quote.alignment = PP_ALIGN.CENTER
+    p_quote.font.name = FONT_HEAD
+    p_quote.font.size = Pt(30)
+    p_quote.font.bold = True
+    p_quote.font.color.rgb = C_WHITE
+    p_quote.space_after = Pt(18)
+
+    p_sum = ctf12.add_paragraph()
+    p_sum.text = (
+        "The golden hour is dead in peer drone warfare. Military survivability demands a fundamental pivot "
+        "toward autonomous robotic CASEVAC, forward whole-blood storage, subterranean micro-hubs, "
+        "and aggressive prolonged field care training for every frontline combat soldier."
+    )
+    p_sum.alignment = PP_ALIGN.CENTER
+    p_sum.font.name = FONT_BODY
+    p_sum.font.size = Pt(16)
+    p_sum.font.color.rgb = C_TEXT_LIGHT
+
+    # 3 Pill Badges
+    pills = [
+        "Doctrine: Train for PFC (24-72h)",
+        "Technology: Invest in CASEVAC UGVs",
+        "Clinical: Frontline Blood Access"
+    ]
+    for i, ptext in enumerate(pills):
+        left = Inches(1.8 + i * 3.4)
+        pb = s12.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, Inches(5.6), Inches(3.0), Inches(0.55))
+        pb.fill.solid()
+        pb.fill.fore_color.rgb = RGBColor(30, 41, 59)
+        pb.line.color.rgb = RGBColor(51, 65, 85)
+        pbtf = pb.text_frame
+        pbp = pbtf.paragraphs[0]
+        pbp.text = ptext
+        pbp.alignment = PP_ALIGN.CENTER
+        pbp.font.size = Pt(11)
+        pbp.font.bold = True
+        pbp.font.color.rgb = C_TEXT_LIGHT
+
+    # Save
+    prs.save(filename)
+    print(f"Presentation saved successfully as '{filename}'.")
+
+if __name__ == "__main__":
+    out_file = sys.argv[1] if len(sys.argv) > 1 else "drone_warfare_medical_lessons.pptx"
+    create_deck(out_file)
+```eof
+
+### How to generate and open your PowerPoint file:
+
+1. **Install python-pptx** (if not already installed):
+   
+```bash
+   pip install python-pptx
