@@ -228,19 +228,16 @@ export class CloudSyncService {
       }
 
       try {
-        const { data: profileRow } = await supabase
+        const { data: profileRows } = await supabase
           .from("profiles")
-          .select("data, updated_at")
+          .select("data")
           .eq("user_id", userId)
-          .maybeSingle();
+          .limit(1);
 
-        if (profileRow?.data) {
-          StorageManager.set(StorageManager.KEYS.PROFILE, profileRow.data);
-          const profileUpdatedAt = profileRow.updated_at
-            ? Date.parse(profileRow.updated_at)
-            : 0;
+        if (Array.isArray(profileRows) && profileRows.length > 0 && profileRows[0]?.data) {
+          StorageManager.set(StorageManager.KEYS.PROFILE, profileRows[0].data);
           StorageManager.set("profile_sync_meta", {
-            updatedAt: Number.isFinite(profileUpdatedAt) ? profileUpdatedAt : 0,
+            updatedAt: Date.now(),
           });
         }
       } catch (pErr) {

@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase";
 import type { FinancialProfile } from "./profile.types";
 import { DEFAULT_FINANCIAL_PROFILE } from "./profile";
 import { StorageManager } from "@/lib/core/storage-manager";
+import { CloudSyncService } from "@/lib/core/sync-service";
 
 const PROFILE_KEY = StorageManager.KEYS.PROFILE;
 const PROFILE_SYNC_META_KEY = "profile_sync_meta";
@@ -10,11 +11,6 @@ type ProfileSyncMetadata = {
   updatedAt: number;
 };
 
-function getProfileUpdatedAt(value: string | null | undefined): number {
-  const updatedAt = value ? Date.parse(value) : Number.NaN;
-  return Number.isFinite(updatedAt) ? updatedAt : 0;
-}
-
 export async function hasSavedFinancialProfile(): Promise<boolean> {
   // 1. Check local cache first for instant response
   const cached = StorageManager.get<FinancialProfile | null>(PROFILE_KEY, null);
@@ -22,21 +18,22 @@ export async function hasSavedFinancialProfile(): Promise<boolean> {
 
   // 2. Check remote database if authenticated
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return false;
 
     const { data, error } = await supabase
       .from("profiles")
       .select("user_id")
       .eq("user_id", user.id)
-      .maybeSingle();
+      .limit(1);
 
     if (error) {
-      console.error("Failed to check financial profile:", error.message || error);
       return false;
     }
 
-    return data !== null;
+    return Array.isArray(data) && data.length > 0;
   } catch {
     return false;
   }
@@ -47,7 +44,9 @@ export async function loadFinancialProfile(): Promise<FinancialProfile> {
   const cachedProfile = StorageManager.get<FinancialProfile | null>(PROFILE_KEY, null);
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     // If unauthenticated, return cached local profile or system default
     if (!user) {
@@ -56,20 +55,21 @@ export async function loadFinancialProfile(): Promise<FinancialProfile> {
 
     const { data, error } = await supabase
       .from("profiles")
-      .select("data, updated_at")
+      .select("data")
       .eq("user_id", user.id)
-      .maybeSingle();
+      .limit(1);
 
-    if (error || !data) {
-      if (error) console.error("Failed to load financial profile:", error.message || error);
+    if (error || !Array.isArray(data) || data.length === 0) {
       return cachedProfile ?? DEFAULT_FINANCIAL_PROFILE;
     }
 
-    const saved = (data.data || {}) as Partial<FinancialProfile>;
+    const saved = (data[0]?.data || {}) as Partial<FinancialProfile>;
 
     const merged: FinancialProfile = {
       householdMode: saved.householdMode ?? DEFAULT_FINANCIAL_PROFILE.householdMode,
-      partner: saved.partner ? { ...DEFAULT_FINANCIAL_PROFILE.partner, ...saved.partner } : DEFAULT_FINANCIAL_PROFILE.partner,
+      partner: saved.partner
+        ? { ...DEFAULT_FINANCIAL_PROFILE.partner, ...saved.partner }
+        : DEFAULT_FINANCIAL_PROFILE.partner,
       personal: { ...DEFAULT_FINANCIAL_PROFILE.personal, ...saved.personal },
       income: { ...DEFAULT_FINANCIAL_PROFILE.income, ...saved.income },
       assets: { ...DEFAULT_FINANCIAL_PROFILE.assets, ...saved.assets },
@@ -81,7 +81,7 @@ export async function loadFinancialProfile(): Promise<FinancialProfile> {
     // Update local cache with latest server record
     StorageManager.set(PROFILE_KEY, merged);
     StorageManager.set<ProfileSyncMetadata>(PROFILE_SYNC_META_KEY, {
-      updatedAt: getProfileUpdatedAt(data.updated_at),
+      updatedAt: Date.now(),
     });
     return merged;
   } catch (err) {
@@ -91,32 +91,17 @@ export async function loadFinancialProfile(): Promise<FinancialProfile> {
 }
 
 export async function saveFinancialProfile(profile: FinancialProfile): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
+  // Always persist locally first
+  StorageManager.set(PROFILE_KEY, profile);
+  StorageManager.set<ProfileSyncMetadata>(PROFILE_SYNC_META_KEY, {
+    updatedAt: Date.now(),
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
   if (!user) {
-    // User is working in local/guest mode; local state is saved
-    StorageManager.set(PROFILE_KEY, profile);
     return;
-  }
-
-  const localMetadata = StorageManager.get<ProfileSyncMetadata>(
-    PROFILE_SYNC_META_KEY,
-    { updatedAt: 0 }
-  );
-  const { data: remoteVersion, error: remoteVersionError } = await supabase
-    .from("profiles")
-    .select("updated_at")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (remoteVersionError) {
-    throw new Error("Unable to verify the latest profile version before saving.");
-  }
-
-  const remoteUpdatedAt = getProfileUpdatedAt(remoteVersion?.updated_at);
-  if (remoteUpdatedAt > localMetadata.updatedAt) {
-    throw new Error(
-      "Your profile changed on another device. Refresh this page before saving so no recent changes are overwritten."
-    );
   }
 
   const payload = {
@@ -129,21 +114,20 @@ export async function saveFinancialProfile(profile: FinancialProfile): Promise<v
     .upsert(payload, { onConflict: "user_id" });
 
   if (error) {
-    console.error("Failed to sync financial profile to cloud:", error.message || JSON.stringify(error));
-    throw new Error(error.message || "Database upsert failed due to RLS policy");
+    console.warn("[ProfileStorage] profiles table upsert fallback to CloudSyncService:", error.message);
   }
 
-  StorageManager.set(PROFILE_KEY, profile);
-  StorageManager.set<ProfileSyncMetadata>(PROFILE_SYNC_META_KEY, {
-    updatedAt: Date.now(),
-  });
+  // Also push to unified user_sync_data store for cross-device sync
+  void CloudSyncService.pushStore("profile", profile);
 }
 
 export async function resetFinancialProfile(): Promise<void> {
   StorageManager.remove(PROFILE_KEY);
 
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
 
     const { error } = await supabase
@@ -152,9 +136,9 @@ export async function resetFinancialProfile(): Promise<void> {
       .eq("user_id", user.id);
 
     if (error) {
-      console.error("Failed to reset remote financial profile:", error.message || error);
+      console.warn("Failed to reset remote financial profile:", error.message || error);
     }
   } catch (err) {
-    console.error("Error during profile reset:", err);
+    console.warn("Error during profile reset:", err);
   }
 }
